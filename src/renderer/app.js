@@ -16,7 +16,6 @@ const state = {
 };
 
 const els = {
-  runtimeInfo: document.getElementById("runtimeInfo"),
   minimizeWindowBtn: document.getElementById("minimizeWindowBtn"),
   closeWindowBtn: document.getElementById("closeWindowBtn"),
   createAgentBtn: document.getElementById("createAgentBtn"),
@@ -214,22 +213,7 @@ async function saveSettingsAction() {
 }
 
 function renderRuntimeInfo() {
-  const info = state.appInfo;
-  if (!info) {
-    els.runtimeInfo.textContent = "";
-    return;
-  }
-
-  const lines = [];
-  lines.push(`Platform: ${info.platform}/${info.arch}`);
-  lines.push(`Runtime: ${info.runtimeRoot}`);
-  if (info.binary.found) {
-    lines.push(`4claw Binary: ${info.binary.resolvedPath}`);
-  } else {
-    lines.push(`Missing ${info.binary.binaryName}`);
-    lines.push(`Drop binary at: ${info.binaryDropPath}`);
-  }
-  els.runtimeInfo.innerHTML = lines.join("<br/>");
+  // Hidden by UI requirement.
 }
 
 function setTab(tabName) {

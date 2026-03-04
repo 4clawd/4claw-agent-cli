@@ -68,6 +68,7 @@ body {
   justify-content: space-between;
   padding: 14px 18px;
   -webkit-app-region: drag;
+  position: relative;
 }
 
 .brand-wrap {
@@ -106,10 +107,13 @@ body {
 }
 
 .topbar-right {
+  position: absolute;
+  top: 6px;
+  right: 10px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  max-width: 56%;
+  max-width: none;
 }
 
 .window-controls {
