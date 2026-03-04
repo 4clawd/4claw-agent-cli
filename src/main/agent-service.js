@@ -185,6 +185,20 @@ class AgentService {
     return ports;
   }
 
+  usedPortsExcept(excludedAgentId) {
+    const ports = new Set();
+    for (const agent of this.listAgents()) {
+      if (agent.id === excludedAgentId) {
+        continue;
+      }
+      const cfg = readJson(agent.configPath, {});
+      if (cfg && cfg.gateway && Number.isInteger(cfg.gateway.port)) {
+        ports.add(cfg.gateway.port);
+      }
+    }
+    return ports;
+  }
+
   nextPort() {
     const inUse = this.usedPorts();
     let port = 18790;
@@ -399,6 +413,75 @@ class AgentService {
     const meta = readJson(path.join(agent.dir, "meta.json"), agent.meta);
     meta.updatedAt = nowISO();
     writeJson(path.join(agent.dir, "meta.json"), meta);
+    return this.getAgent(id);
+  }
+
+  exportConfig(id, destinationPath = "") {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+
+    const cfg = this.loadConfig(id);
+    const fileName = `${id}-config-${fileTimestamp()}.json`;
+    const outPath = destinationPath || path.join(agent.dir, fileName);
+    writeJson(outPath, cfg);
+    const stat = fs.statSync(outPath);
+    return {
+      filePath: outPath,
+      fileName: path.basename(outPath),
+      size: stat.size,
+      createdAt: stat.mtime.toISOString()
+    };
+  }
+
+  importConfig(id, sourcePath) {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error("Config file does not exist");
+    }
+
+    let incoming;
+    try {
+      incoming = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+    } catch {
+      throw new Error("Config file is not valid JSON");
+    }
+    if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+      throw new Error("Config file must be a JSON object");
+    }
+
+    const current = this.loadConfig(id);
+    const cfg = incoming;
+    if (!cfg.agents || typeof cfg.agents !== "object") {
+      cfg.agents = {};
+    }
+    if (!cfg.agents.defaults || typeof cfg.agents.defaults !== "object") {
+      cfg.agents.defaults = {};
+    }
+    cfg.agents.defaults.workspace = agent.workspacePath;
+
+    if (!cfg.gateway || typeof cfg.gateway !== "object") {
+      cfg.gateway = {};
+    }
+    const otherPorts = this.usedPortsExcept(id);
+    const candidate = cfg.gateway.port;
+    if (!Number.isInteger(candidate) || otherPorts.has(candidate)) {
+      if (current && current.gateway && Number.isInteger(current.gateway.port) && !otherPorts.has(current.gateway.port)) {
+        cfg.gateway.port = current.gateway.port;
+      } else {
+        cfg.gateway.port = this.nextPort();
+      }
+    }
+
+    writeJson(agent.configPath, cfg);
+    const meta = readJson(path.join(agent.dir, "meta.json"), agent.meta);
+    meta.updatedAt = nowISO();
+    writeJson(path.join(agent.dir, "meta.json"), meta);
+    fs.appendFileSync(agent.logPath, `[${nowISO()}] [SYSTEM] Config imported from ${sourcePath}\n`, "utf8");
     return this.getAgent(id);
   }
 

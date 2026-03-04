@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("clawApi", {
   deleteAgent: (id) => ipcRenderer.invoke("agents:delete", id),
   loadConfig: (id) => ipcRenderer.invoke("agents:config:load", id),
   saveConfig: (id, data) => ipcRenderer.invoke("agents:config:save", id, data),
+  exportConfig: (id) => ipcRenderer.invoke("agents:config:export", id),
+  importConfig: (id) => ipcRenderer.invoke("agents:config:import", id),
   getLogs: (id, maxLines) => ipcRenderer.invoke("agents:logs:get", id, maxLines),
   clearLogs: (id) => ipcRenderer.invoke("agents:logs:clear", id),
   listBackups: (id) => ipcRenderer.invoke("agents:backups:list", id),

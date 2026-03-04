@@ -59,6 +59,29 @@ function setupIpc() {
   ipcMain.handle("agents:delete", (_event, id) => agentService.deleteAgent(id));
   ipcMain.handle("agents:config:load", (_event, id) => agentService.loadConfig(id));
   ipcMain.handle("agents:config:save", (_event, id, data) => agentService.saveConfig(id, data));
+  ipcMain.handle("agents:config:export", async (_event, id) => {
+    const result = await dialog.showSaveDialog({
+      title: "Export Agent Config",
+      defaultPath: `${id}-config-${fileTimestamp()}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+    return agentService.exportConfig(id, result.filePath);
+  });
+  ipcMain.handle("agents:config:import", async (_event, id) => {
+    const result = await dialog.showOpenDialog({
+      title: "Import Agent Config",
+      properties: ["openFile"],
+      filters: [{ name: "JSON", extensions: ["json"] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return agentService.importConfig(id, result.filePaths[0]);
+  });
   ipcMain.handle("agents:logs:get", (_event, id, maxLines) => agentService.getLogs(id, maxLines));
   ipcMain.handle("agents:logs:clear", (_event, id) => agentService.clearLogs(id));
   ipcMain.handle("agents:backups:list", (_event, id) => agentService.listBackups(id));

@@ -30,6 +30,8 @@ const els = {
     logs: document.getElementById("tab-logs"),
     backups: document.getElementById("tab-backups")
   },
+  importConfigBtn: document.getElementById("importConfigBtn"),
+  exportConfigBtn: document.getElementById("exportConfigBtn"),
   reloadConfigBtn: document.getElementById("reloadConfigBtn"),
   saveConfigBtn: document.getElementById("saveConfigBtn"),
   configEditor: document.getElementById("configEditor"),
@@ -38,10 +40,12 @@ const els = {
   logViewer: document.getElementById("logViewer"),
   createBackupBtn: document.getElementById("createBackupBtn"),
   exportBackupBtn: document.getElementById("exportBackupBtn"),
-  backupList: document.getElementById("backupList")
-  ,
+  backupList: document.getElementById("backupList"),
   toastHost: document.getElementById("toastHost")
 };
+
+let logsRefreshInFlight = false;
+let logsAutoRefreshTimer = null;
 
 function showToast(message, type = "info") {
   if (!els.toastHost) {
@@ -666,17 +670,27 @@ function renderConfigEditor() {
 }
 
 async function refreshLogs() {
+  if (logsRefreshInFlight) {
+    return;
+  }
   const selected = getSelectedAgent();
   if (!selected) {
     els.logViewer.textContent = "";
     return;
   }
+  logsRefreshInFlight = true;
   try {
+    const shouldStickToBottom =
+      Math.abs(els.logViewer.scrollHeight - els.logViewer.scrollTop - els.logViewer.clientHeight) < 40;
     state.logs = await api.getLogs(selected.id, 3500);
     els.logViewer.textContent = state.logs || "";
-    els.logViewer.scrollTop = els.logViewer.scrollHeight;
+    if (shouldStickToBottom) {
+      els.logViewer.scrollTop = els.logViewer.scrollHeight;
+    }
   } catch (error) {
     showError(error);
+  } finally {
+    logsRefreshInFlight = false;
   }
 }
 
@@ -884,6 +898,38 @@ function bindEvents() {
     }
   });
 
+  els.importConfigBtn.addEventListener("click", async () => {
+    const selected = ensureSelectedAgent();
+    if (!selected) {
+      return;
+    }
+    try {
+      const out = await api.importConfig(selected.id);
+      if (out) {
+        showInfo("Config 导入完成");
+        await refreshAgents(true);
+        await loadConfig();
+      }
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  els.exportConfigBtn.addEventListener("click", async () => {
+    const selected = ensureSelectedAgent();
+    if (!selected) {
+      return;
+    }
+    try {
+      const out = await api.exportConfig(selected.id);
+      if (out) {
+        showInfo(`Config 已导出: ${out.filePath}`);
+      }
+    } catch (error) {
+      showError(error);
+    }
+  });
+
   els.reloadConfigBtn.addEventListener("click", () => loadConfig());
   els.saveConfigBtn.addEventListener("click", () => saveConfig());
   els.refreshLogsBtn.addEventListener("click", () => refreshLogs());
@@ -947,6 +993,22 @@ async function boot() {
     await refreshLogs();
     await refreshBackups();
   }
+
+  if (logsAutoRefreshTimer) {
+    clearInterval(logsAutoRefreshTimer);
+  }
+  logsAutoRefreshTimer = window.setInterval(() => {
+    if (state.selectedTab !== "logs" || !state.selectedAgentId) {
+      return;
+    }
+    refreshLogs().catch(() => {});
+  }, 500);
+
+  window.addEventListener("beforeunload", () => {
+    if (logsAutoRefreshTimer) {
+      clearInterval(logsAutoRefreshTimer);
+    }
+  });
 }
 
 boot().catch((error) => {
