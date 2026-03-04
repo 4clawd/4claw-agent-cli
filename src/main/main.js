@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const electronModule = require("electron");
@@ -22,40 +23,78 @@ let agentService = null;
 let tray = null;
 let isQuitting = false;
 let closeChoiceInProgress = false;
+let appSettings = { closeBehavior: "ask" };
+
+function getSettingsPath() {
+  return path.join(app.getPath("userData"), "runtime", "ui-settings.json");
+}
+
+function normalizeSettings(input) {
+  const allowed = new Set(["ask", "minimize", "exit"]);
+  const closeBehavior = typeof input?.closeBehavior === "string" ? input.closeBehavior : "ask";
+  return {
+    closeBehavior: allowed.has(closeBehavior) ? closeBehavior : "ask"
+  };
+}
+
+function loadSettings() {
+  const filePath = getSettingsPath();
+  if (!fs.existsSync(filePath)) {
+    appSettings = { closeBehavior: "ask" };
+    return appSettings;
+  }
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    appSettings = normalizeSettings(raw);
+  } catch {
+    appSettings = { closeBehavior: "ask" };
+  }
+  return appSettings;
+}
+
+function saveSettings(patch) {
+  appSettings = normalizeSettings({ ...appSettings, ...(patch || {}) });
+  const filePath = getSettingsPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(appSettings, null, 2)}\n`, "utf8");
+  return appSettings;
+}
+
+function resolveIconPath(candidates) {
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
 
 function resolveAppIconPath() {
-  const candidates = [
+  return resolveIconPath([
     path.join(app.getAppPath(), "assets", "logo.png"),
     path.join(app.getAppPath(), "assets", "icon.png"),
     path.join(process.cwd(), "assets", "logo.png"),
     path.join(process.cwd(), "assets", "icon.png")
-  ];
-  return candidates.find((p) => p && require("fs").existsSync(p)) || "";
+  ]);
 }
 
-function resolveAppIcon() {
-  const iconPath = resolveAppIconPath();
-  if (iconPath) {
-    const icon = nativeImage.createFromPath(iconPath);
-    if (!icon.isEmpty()) {
-      return icon;
-    }
+function resolveTrayIconPath() {
+  return resolveIconPath([
+    path.join(app.getAppPath(), "assets", "tray.png"),
+    path.join(app.getAppPath(), "assets", "logo.png"),
+    path.join(process.cwd(), "assets", "tray.png"),
+    path.join(process.cwd(), "assets", "logo.png"),
+    process.execPath
+  ]);
+}
+
+function resolveImage(iconPath) {
+  if (!iconPath) {
+    return nativeImage.createEmpty();
   }
-  return nativeImage.createEmpty();
-}
-
-function resolveTrayIcon() {
-  const candidates = [resolveAppIconPath(), path.join(app.getAppPath(), "assets", "tray.png"), path.join(process.cwd(), "assets", "tray.png"), process.execPath];
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-    try {
-      const icon = nativeImage.createFromPath(candidate);
-      if (!icon.isEmpty()) {
-        return icon;
-      }
-    } catch {}
+  const icon = nativeImage.createFromPath(iconPath);
+  if (!icon.isEmpty()) {
+    return icon;
   }
   return nativeImage.createEmpty();
 }
@@ -76,25 +115,28 @@ function ensureTray() {
   if (tray) {
     return;
   }
-  tray = new Tray(resolveTrayIcon() || resolveAppIcon());
+
+  const trayImage = resolveImage(resolveTrayIconPath());
+  tray = new Tray(trayImage);
   tray.setToolTip("4claw CLI");
 
   const menu = Menu.buildFromTemplate([
     {
-      label: "打开面板",
+      label: "\u6253\u5f00\u9762\u677f",
       click: () => showMainWindow()
     },
     {
       type: "separator"
     },
     {
-      label: "关闭退出",
+      label: "\u5173\u95ed\u9000\u51fa",
       click: () => {
         isQuitting = true;
         app.quit();
       }
     }
   ]);
+
   tray.setContextMenu(menu);
   tray.on("double-click", () => showMainWindow());
 }
@@ -103,6 +145,48 @@ function hideToTray() {
   ensureTray();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide();
+  }
+}
+
+async function handleCloseByBehavior() {
+  const behavior = appSettings.closeBehavior || "ask";
+  if (behavior === "exit") {
+    isQuitting = true;
+    app.quit();
+    return;
+  }
+  if (behavior === "minimize") {
+    hideToTray();
+    return;
+  }
+
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["\u5f7b\u5e95\u9000\u51fa", "\u6700\u5c0f\u5316\u8fd0\u884c", "\u53d6\u6d88"],
+    defaultId: 1,
+    cancelId: 2,
+    noLink: true,
+    title: "\u9000\u51fa 4claw CLI",
+    message: "\u5173\u95ed\u7a97\u53e3\u65f6\u5982\u4f55\u5904\u7406\uff1f",
+    detail: "\u53ef\u5728\u201c\u8bbe\u7f6e\u201d\u9875\u4fee\u6539\u9ed8\u8ba4\u884c\u4e3a\u3002",
+    checkboxLabel: "\u8bb0\u4f4f\u672c\u6b21\u9009\u62e9",
+    checkboxChecked: false
+  });
+
+  if (result.response === 0) {
+    if (result.checkboxChecked) {
+      saveSettings({ closeBehavior: "exit" });
+    }
+    isQuitting = true;
+    app.quit();
+    return;
+  }
+
+  if (result.response === 1) {
+    if (result.checkboxChecked) {
+      saveSettings({ closeBehavior: "minimize" });
+    }
+    hideToTray();
   }
 }
 
@@ -134,27 +218,10 @@ function createWindow() {
     if (closeChoiceInProgress) {
       return;
     }
+
     closeChoiceInProgress = true;
     try {
-      const result = await dialog.showMessageBox(mainWindow, {
-        type: "question",
-        buttons: ["彻底退出", "最小化运行", "取消"],
-        defaultId: 1,
-        cancelId: 2,
-        noLink: true,
-        title: "退出 4claw CLI",
-        message: "关闭窗口时如何处理？",
-        detail: "选择“最小化运行”后，程序会继续在后台运行，并在系统托盘显示图标。"
-      });
-
-      if (result.response === 0) {
-        isQuitting = true;
-        app.quit();
-        return;
-      }
-      if (result.response === 1) {
-        hideToTray();
-      }
+      await handleCloseByBehavior();
     } finally {
       closeChoiceInProgress = false;
     }
@@ -169,10 +236,14 @@ function setupIpc() {
       arch: process.arch,
       userData: agentService.paths.userData,
       runtimeRoot: agentService.paths.root,
+      settings: appSettings,
       binary,
       binaryDropPath: path.join(process.cwd(), "resources", "bin", binary.binaryName)
     };
   });
+
+  ipcMain.handle("settings:get", () => appSettings);
+  ipcMain.handle("settings:save", (_event, patch) => saveSettings(patch));
 
   ipcMain.handle("agents:list", () => agentService.listAgents());
   ipcMain.handle("agents:create", (_event, name) => agentService.createAgent(name));
@@ -180,6 +251,7 @@ function setupIpc() {
   ipcMain.handle("agents:start", (_event, id) => agentService.startAgent(id));
   ipcMain.handle("agents:stop", (_event, id) => agentService.stopAgent(id));
   ipcMain.handle("agents:delete", (_event, id) => agentService.deleteAgent(id));
+
   ipcMain.handle("agents:config:load", (_event, id) => agentService.loadConfig(id));
   ipcMain.handle("agents:config:save", (_event, id, data) => agentService.saveConfig(id, data));
   ipcMain.handle("agents:config:export", async (_event, id) => {
@@ -188,7 +260,6 @@ function setupIpc() {
       defaultPath: `${id}-config-${fileTimestamp()}.json`,
       filters: [{ name: "JSON", extensions: ["json"] }]
     });
-
     if (result.canceled || !result.filePath) {
       return null;
     }
@@ -205,27 +276,26 @@ function setupIpc() {
     }
     return agentService.importConfig(id, result.filePaths[0]);
   });
+
   ipcMain.handle("agents:logs:get", (_event, id, maxLines) => agentService.getLogs(id, maxLines));
   ipcMain.handle("agents:logs:clear", (_event, id) => agentService.clearLogs(id));
+
   ipcMain.handle("agents:backups:list", (_event, id) => agentService.listBackups(id));
   ipcMain.handle("agents:backup:create", (_event, id) => agentService.createBackup(id));
-
   ipcMain.handle("agents:backup:export", async (_event, id) => {
     const result = await dialog.showSaveDialog({
-      title: "导出 Agent 备份",
+      title: "Export Agent Backup",
       defaultPath: `${id}-${fileTimestamp()}.zip`,
       filters: [{ name: "Zip Archive", extensions: ["zip"] }]
     });
-
     if (result.canceled || !result.filePath) {
       return null;
     }
     return agentService.createBackup(id, result.filePath);
   });
-
   ipcMain.handle("agents:backup:import", async (_event, preferredName = "") => {
     const result = await dialog.showOpenDialog({
-      title: "导入备份",
+      title: "Import Agent Backup",
       properties: ["openFile"],
       filters: [{ name: "Zip Archive", extensions: ["zip"] }]
     });
@@ -234,7 +304,6 @@ function setupIpc() {
     }
     return agentService.importBackup(result.filePaths[0], preferredName);
   });
-
   ipcMain.handle("agents:backup:restore", (_event, fileName, preferredName = "") =>
     agentService.restoreFromLocalBackup(fileName, preferredName)
   );
@@ -242,7 +311,7 @@ function setupIpc() {
   ipcMain.handle("agents:folder:open", async (_event, id) => {
     const agent = agentService.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
     await shell.openPath(agent.dir);
     return true;
@@ -250,10 +319,13 @@ function setupIpc() {
 }
 
 app.whenReady().then(() => {
-  const appIcon = resolveAppIcon();
+  loadSettings();
+
+  const appIcon = resolveImage(resolveAppIconPath());
   if (process.platform === "darwin" && appIcon && !appIcon.isEmpty() && app.dock) {
     app.dock.setIcon(appIcon);
   }
+
   agentService = new AgentService(app);
   setupIpc();
   createWindow();
@@ -261,6 +333,8 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    } else {
+      showMainWindow();
     }
   });
 });
@@ -276,9 +350,11 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", async () => {
   isQuitting = true;
+
   if (!agentService) {
     return;
   }
+
   const active = agentService.listAgents().filter((a) => a.status.running);
   for (const item of active) {
     try {

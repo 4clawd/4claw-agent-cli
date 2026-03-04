@@ -51,6 +51,7 @@
             <button class="tab-btn" data-tab="config">Config 参数</button>
             <button class="tab-btn" data-tab="logs">运行日志</button>
             <button class="tab-btn" data-tab="backups">备份中心</button>
+            <button class="tab-btn" data-tab="settings">设置</button>
           </nav>
 
           <section class="tab-body">
@@ -80,6 +81,28 @@
                 <button id="exportBackupBtn" class="btn btn-soft">导出备份</button>
               </div>
               <div id="backupList" class="backup-list"></div>
+            </article>
+
+            <article id="tab-settings" class="tab-pane glass">
+              <div class="settings-panel">
+                <h3>关闭窗口行为</h3>
+                <label class="settings-option">
+                  <input type="radio" name="closeBehavior" value="ask" checked />
+                  每次询问
+                </label>
+                <label class="settings-option">
+                  <input type="radio" name="closeBehavior" value="minimize" />
+                  最小化运行
+                </label>
+                <label class="settings-option">
+                  <input type="radio" name="closeBehavior" value="exit" />
+                  直接关闭
+                </label>
+                <div class="pane-toolbar">
+                  <button id="saveSettingsBtn" class="btn btn-primary">保存设置</button>
+                </div>
+                <p class="settings-hint">如果选择“每次询问”，关闭时会出现“是否记住本次选择”。</p>
+              </div>
             </article>
           </section>
         </section>

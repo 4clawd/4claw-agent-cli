@@ -302,6 +302,11 @@ select {
   caret-color: var(--text-main);
 }
 
+input[type="radio"],
+input[type="checkbox"] {
+  width: auto;
+}
+
 input:focus,
 textarea:focus,
 select:focus {
@@ -528,6 +533,34 @@ button {
   background: rgba(255, 253, 241, 0.8);
   color: var(--text-sub);
   border: 1px dashed rgba(192, 151, 34, 0.4);
+}
+
+.settings-panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 251, 236, 0.9);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  max-width: 620px;
+}
+
+.settings-panel h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.settings-hint {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: 12px;
 }
 
 .toast-host {

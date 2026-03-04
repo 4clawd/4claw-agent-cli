@@ -9,6 +9,9 @@ const state = {
   configOriginal: null,
   logs: "",
   backups: [],
+  settings: {
+    closeBehavior: "ask"
+  },
   isEditingInput: false
 };
 
@@ -28,7 +31,8 @@ const els = {
     dashboard: document.getElementById("tab-dashboard"),
     config: document.getElementById("tab-config"),
     logs: document.getElementById("tab-logs"),
-    backups: document.getElementById("tab-backups")
+    backups: document.getElementById("tab-backups"),
+    settings: document.getElementById("tab-settings")
   },
   importConfigBtn: document.getElementById("importConfigBtn"),
   exportConfigBtn: document.getElementById("exportConfigBtn"),
@@ -41,6 +45,7 @@ const els = {
   createBackupBtn: document.getElementById("createBackupBtn"),
   exportBackupBtn: document.getElementById("exportBackupBtn"),
   backupList: document.getElementById("backupList"),
+  saveSettingsBtn: document.getElementById("saveSettingsBtn"),
   toastHost: document.getElementById("toastHost")
 };
 
@@ -120,6 +125,41 @@ function ensureSelectedAgent() {
     return null;
   }
   return selected;
+}
+
+function renderSettings() {
+  const value = state.settings?.closeBehavior || "ask";
+  const radios = Array.from(document.querySelectorAll('input[name="closeBehavior"]'));
+  for (const radio of radios) {
+    radio.checked = radio.value === value;
+  }
+}
+
+async function loadSettings() {
+  try {
+    const payload = await api.getSettings();
+    if (payload && typeof payload === "object") {
+      state.settings = {
+        closeBehavior: payload.closeBehavior || "ask"
+      };
+    }
+  } catch {}
+  renderSettings();
+}
+
+async function saveSettingsAction() {
+  const checked = document.querySelector('input[name="closeBehavior"]:checked');
+  const closeBehavior = checked ? checked.value : "ask";
+  try {
+    const saved = await api.saveSettings({ closeBehavior });
+    state.settings = {
+      closeBehavior: saved?.closeBehavior || "ask"
+    };
+    renderSettings();
+    showInfo("设置已保存");
+  } catch (error) {
+    showError(error);
+  }
 }
 
 function renderRuntimeInfo() {
@@ -979,12 +1019,22 @@ function bindEvents() {
       showError(error);
     }
   });
+
+  els.saveSettingsBtn.addEventListener("click", () => {
+    saveSettingsAction();
+  });
 }
 
 async function boot() {
   bindEvents();
   state.appInfo = await api.init();
+  if (state.appInfo && state.appInfo.settings) {
+    state.settings = {
+      closeBehavior: state.appInfo.settings.closeBehavior || "ask"
+    };
+  }
   renderRuntimeInfo();
+  await loadSettings();
   await refreshAgents(false);
   if (state.selectedAgentId) {
     await selectAgent(state.selectedAgentId);
