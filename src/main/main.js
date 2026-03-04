@@ -14,11 +14,82 @@ if (typeof electronModule === "string") {
   return;
 }
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = electronModule;
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = electronModule;
 const { AgentService, fileTimestamp } = require("./agent-service");
 
 let mainWindow = null;
 let agentService = null;
+let tray = null;
+let isQuitting = false;
+let closeChoiceInProgress = false;
+
+function resolveTrayIcon() {
+  const candidates = [
+    path.join(app.getAppPath(), "assets", "tray.ico"),
+    path.join(app.getAppPath(), "assets", "tray.png"),
+    path.join(process.cwd(), "assets", "tray.ico"),
+    path.join(process.cwd(), "assets", "tray.png"),
+    process.execPath
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    try {
+      const icon = nativeImage.createFromPath(candidate);
+      if (!icon.isEmpty()) {
+        return icon;
+      }
+    } catch {}
+  }
+  return nativeImage.createEmpty();
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function ensureTray() {
+  if (tray) {
+    return;
+  }
+  tray = new Tray(resolveTrayIcon());
+  tray.setToolTip("4claw CLI");
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "打开面板",
+      click: () => showMainWindow()
+    },
+    {
+      type: "separator"
+    },
+    {
+      label: "关闭退出",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+  tray.setContextMenu(menu);
+  tray.on("double-click", () => showMainWindow());
+}
+
+function hideToTray() {
+  ensureTray();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -36,6 +107,41 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+
+  mainWindow.on("close", async (event) => {
+    if (isQuitting) {
+      return;
+    }
+    event.preventDefault();
+
+    if (closeChoiceInProgress) {
+      return;
+    }
+    closeChoiceInProgress = true;
+    try {
+      const result = await dialog.showMessageBox(mainWindow, {
+        type: "question",
+        buttons: ["彻底退出", "最小化运行", "取消"],
+        defaultId: 1,
+        cancelId: 2,
+        noLink: true,
+        title: "退出 4claw CLI",
+        message: "关闭窗口时如何处理？",
+        detail: "选择“最小化运行”后，程序会继续在后台运行，并在系统托盘显示图标。"
+      });
+
+      if (result.response === 0) {
+        isQuitting = true;
+        app.quit();
+        return;
+      }
+      if (result.response === 1) {
+        hideToTray();
+      }
+    } finally {
+      closeChoiceInProgress = false;
+    }
+  });
 }
 
 function setupIpc() {
@@ -139,12 +245,16 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  if (!isQuitting && tray) {
+    return;
+  }
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
 app.on("before-quit", async () => {
+  isQuitting = true;
   if (!agentService) {
     return;
   }
@@ -153,5 +263,10 @@ app.on("before-quit", async () => {
     try {
       await agentService.stopAgent(item.id);
     } catch {}
+  }
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
   }
 });
