@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>4claw Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-layer"></div>
+    <div id="app">
+      <header class="topbar glass">
+        <div class="brand-wrap">
+          <div class="brand-dot"></div>
+          <div>
+            <h1>4claw CLI</h1>
+            <p>简易便捷的桌面端4claw cli</p>
+          </div>
+        </div>
+        <div id="runtimeInfo" class="runtime-info"></div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar glass">
+          <section class="panel-head">
+            <h2>Agent 列表</h2>
+          </section>
+          <section class="create-box">
+            <input id="newAgentName" type="text" spellcheck="false" autocomplete="off" placeholder="输入新 Agent 名称" />
+            <button id="createAgentBtn" class="btn btn-primary">创建 Agent</button>
+            <div class="row-actions">
+              <button id="importBackupBtn" class="btn btn-soft">导入备份</button>
+              <button id="refreshAgentsBtn" class="btn btn-soft">刷新</button>
+            </div>
+          </section>
+          <section id="agentList" class="agent-list"></section>
+        </aside>
+
+        <section class="content">
+          <div class="content-top glass">
+            <div id="selectedAgentTitle" class="selected-title">未选择 Agent</div>
+            <div class="top-actions">
+              <button id="renameAgentBtn" class="btn btn-soft">重命名</button>
+              <button id="openAgentFolderBtn" class="btn btn-soft">打开目录</button>
+              <button id="deleteAgentBtn" class="btn btn-danger">删除 Agent</button>
+            </div>
+          </div>
+
+          <nav class="tabs glass">
+            <button class="tab-btn active" data-tab="dashboard">总览</button>
+            <button class="tab-btn" data-tab="config">Config 参数</button>
+            <button class="tab-btn" data-tab="logs">运行日志</button>
+            <button class="tab-btn" data-tab="backups">备份中心</button>
+          </nav>
+
+          <section class="tab-body">
+            <article id="tab-dashboard" class="tab-pane active glass"></article>
+
+            <article id="tab-config" class="tab-pane glass">
+              <div class="pane-toolbar">
+                <button id="reloadConfigBtn" class="btn btn-soft">重新加载</button>
+                <button id="saveConfigBtn" class="btn btn-primary">保存 Config</button>
+              </div>
+              <div id="configEditor" class="config-editor"></div>
+            </article>
+
+            <article id="tab-logs" class="tab-pane glass">
+              <div class="pane-toolbar">
+                <button id="refreshLogsBtn" class="btn btn-soft">刷新日志</button>
+                <button id="clearLogsBtn" class="btn btn-soft">清空日志</button>
+              </div>
+              <pre id="logViewer" class="log-viewer"></pre>
+            </article>
+
+            <article id="tab-backups" class="tab-pane glass">
+              <div class="pane-toolbar">
+                <button id="createBackupBtn" class="btn btn-primary">创建备份</button>
+                <button id="exportBackupBtn" class="btn btn-soft">导出备份</button>
+              </div>
+              <div id="backupList" class="backup-list"></div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+    <div id="toastHost" class="toast-host"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
