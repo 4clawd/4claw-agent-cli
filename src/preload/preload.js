@@ -22,5 +22,7 @@ contextBridge.exposeInMainWorld("clawApi", {
   importBackup: (preferredName) => ipcRenderer.invoke("agents:backup:import", preferredName),
   restoreBackup: (fileName, preferredName) =>
     ipcRenderer.invoke("agents:backup:restore", fileName, preferredName),
-  openAgentFolder: (id) => ipcRenderer.invoke("agents:folder:open", id)
+  openAgentFolder: (id) => ipcRenderer.invoke("agents:folder:open", id),
+  minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
+  closeWindow: () => ipcRenderer.invoke("window:close")
 });

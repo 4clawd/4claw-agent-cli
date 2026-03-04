@@ -17,6 +17,8 @@ const state = {
 
 const els = {
   runtimeInfo: document.getElementById("runtimeInfo"),
+  minimizeWindowBtn: document.getElementById("minimizeWindowBtn"),
+  closeWindowBtn: document.getElementById("closeWindowBtn"),
   createAgentBtn: document.getElementById("createAgentBtn"),
   importBackupBtn: document.getElementById("importBackupBtn"),
   refreshAgentsBtn: document.getElementById("refreshAgentsBtn"),
@@ -1145,6 +1147,22 @@ async function createAgentFromWizard() {
 }
 
 function bindEvents() {
+  els.minimizeWindowBtn.addEventListener("click", async () => {
+    try {
+      await api.minimizeWindow();
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  els.closeWindowBtn.addEventListener("click", async () => {
+    try {
+      await api.closeWindow();
+    } catch (error) {
+      showError(error);
+    }
+  });
+
   els.tabs.forEach((tab) => {
     tab.addEventListener("click", () => setTab(tab.dataset.tab));
   });

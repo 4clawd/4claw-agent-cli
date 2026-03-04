@@ -17,7 +17,21 @@
             <p>Simple desktop shell for 4claw</p>
           </div>
         </div>
-        <div id="runtimeInfo" class="runtime-info"></div>
+        <div class="topbar-right no-drag">
+          <div id="runtimeInfo" class="runtime-info"></div>
+          <div class="window-controls" aria-label="Window Controls">
+            <button id="minimizeWindowBtn" class="window-btn" type="button" title="Minimize">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14v2H5z" />
+              </svg>
+            </button>
+            <button id="closeWindowBtn" class="window-btn window-btn-close" type="button" title="Close">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7.4 6L12 10.6 16.6 6 18 7.4 13.4 12 18 16.6 16.6 18 12 13.4 7.4 18 6 16.6 10.6 12 6 7.4z" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       <main class="layout">

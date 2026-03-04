@@ -200,6 +200,8 @@ function createWindow() {
     backgroundColor: "#fef7dc",
     title: "4claw Desktop",
     icon: iconPath || undefined,
+    frame: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -207,6 +209,8 @@ function createWindow() {
     }
   });
 
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.removeMenu();
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 
   mainWindow.on("close", async (event) => {
@@ -316,10 +320,25 @@ function setupIpc() {
     await shell.openPath(agent.dir);
     return true;
   });
+
+  ipcMain.handle("window:minimize", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.minimize();
+    }
+    return true;
+  });
+
+  ipcMain.handle("window:close", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close();
+    }
+    return true;
+  });
 }
 
 app.whenReady().then(() => {
   loadSettings();
+  Menu.setApplicationMenu(null);
 
   const appIcon = resolveImage(resolveAppIconPath());
   if (process.platform === "darwin" && appIcon && !appIcon.isEmpty() && app.dock) {

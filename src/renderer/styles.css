@@ -67,6 +67,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
+  -webkit-app-region: drag;
 }
 
 .brand-wrap {
@@ -102,6 +103,54 @@ body {
   color: var(--text-sub);
   text-align: right;
   max-width: 50%;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 56%;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.window-btn {
+  width: 34px;
+  height: 30px;
+  border: 1px solid rgba(184, 140, 26, 0.36);
+  border-radius: 10px;
+  background: rgba(255, 248, 214, 0.9);
+  box-shadow: var(--shadow-inset);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.window-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: #5a4216;
+}
+
+.window-btn-close svg {
+  fill: #8f2e20;
+}
+
+.window-btn:hover {
+  filter: brightness(0.96);
+}
+
+.window-btn:active {
+  transform: translateY(1px);
+}
+
+.no-drag,
+.no-drag * {
+  -webkit-app-region: no-drag;
 }
 
 .layout {
