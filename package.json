@@ -10,6 +10,8 @@
     "dev": "electron .",
     "pack": "electron-builder --dir",
     "dist:win": "electron-builder --win nsis --x64",
+    "dist:win:portable": "electron-builder --win portable --x64",
+    "dist:win:all": "electron-builder --win --x64",
     "dist:mac": "electron-builder --mac dmg --universal"
   },
   "build": {
@@ -36,11 +38,27 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/logo.png",
-      "signAndEditExecutable": false,
-      "artifactName": "4claw-desktop-${version}-${arch}.${ext}"
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "artifactName": "4claw-desktop-${version}-${arch}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "4claw-desktop-${version}-${arch}-portable.${ext}"
     },
     "mac": {
       "target": [
