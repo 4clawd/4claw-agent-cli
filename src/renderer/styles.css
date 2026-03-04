@@ -75,12 +75,14 @@ body {
   gap: 14px;
 }
 
-.brand-dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-yellow), var(--accent-orange));
-  box-shadow: 0 0 0 8px rgba(247, 201, 80, 0.18);
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(196, 150, 23, 0.32);
+  box-shadow: 0 6px 14px rgba(213, 166, 42, 0.35);
+  background: rgba(255, 250, 232, 0.92);
 }
 
 .brand-wrap h1 {

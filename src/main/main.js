@@ -23,14 +23,29 @@ let tray = null;
 let isQuitting = false;
 let closeChoiceInProgress = false;
 
-function resolveTrayIcon() {
+function resolveAppIconPath() {
   const candidates = [
-    path.join(app.getAppPath(), "assets", "tray.ico"),
-    path.join(app.getAppPath(), "assets", "tray.png"),
-    path.join(process.cwd(), "assets", "tray.ico"),
-    path.join(process.cwd(), "assets", "tray.png"),
-    process.execPath
+    path.join(app.getAppPath(), "assets", "logo.png"),
+    path.join(app.getAppPath(), "assets", "icon.png"),
+    path.join(process.cwd(), "assets", "logo.png"),
+    path.join(process.cwd(), "assets", "icon.png")
   ];
+  return candidates.find((p) => p && require("fs").existsSync(p)) || "";
+}
+
+function resolveAppIcon() {
+  const iconPath = resolveAppIconPath();
+  if (iconPath) {
+    const icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      return icon;
+    }
+  }
+  return nativeImage.createEmpty();
+}
+
+function resolveTrayIcon() {
+  const candidates = [resolveAppIconPath(), path.join(app.getAppPath(), "assets", "tray.png"), path.join(process.cwd(), "assets", "tray.png"), process.execPath];
   for (const candidate of candidates) {
     if (!candidate) {
       continue;
@@ -61,7 +76,7 @@ function ensureTray() {
   if (tray) {
     return;
   }
-  tray = new Tray(resolveTrayIcon());
+  tray = new Tray(resolveTrayIcon() || resolveAppIcon());
   tray.setToolTip("4claw CLI");
 
   const menu = Menu.buildFromTemplate([
@@ -92,6 +107,7 @@ function hideToTray() {
 }
 
 function createWindow() {
+  const iconPath = resolveAppIconPath();
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 980,
@@ -99,6 +115,7 @@ function createWindow() {
     minHeight: 780,
     backgroundColor: "#fef7dc",
     title: "4claw Desktop",
+    icon: iconPath || undefined,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -233,6 +250,10 @@ function setupIpc() {
 }
 
 app.whenReady().then(() => {
+  const appIcon = resolveAppIcon();
+  if (process.platform === "darwin" && appIcon && !appIcon.isEmpty() && app.dock) {
+    app.dock.setIcon(appIcon);
+  }
   agentService = new AgentService(app);
   setupIpc();
   createWindow();

@@ -15,6 +15,7 @@
   "build": {
     "appId": "ai.claw.desktop",
     "productName": "4claw Desktop",
+    "icon": "assets/logo.png",
     "asar": true,
     "directories": {
       "output": "dist"
@@ -37,6 +38,7 @@
       "target": [
         "nsis"
       ],
+      "icon": "assets/logo.png",
       "signAndEditExecutable": false,
       "artifactName": "4claw-desktop-${version}-${arch}.${ext}"
     },
@@ -44,6 +46,7 @@
       "target": [
         "dmg"
       ],
+      "icon": "assets/logo.png",
       "artifactName": "4claw-desktop-${version}-${arch}.${ext}",
       "category": "public.app-category.developer-tools"
     }
