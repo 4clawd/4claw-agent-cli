@@ -17,7 +17,6 @@ const state = {
 
 const els = {
   runtimeInfo: document.getElementById("runtimeInfo"),
-  newAgentName: document.getElementById("newAgentName"),
   createAgentBtn: document.getElementById("createAgentBtn"),
   importBackupBtn: document.getElementById("importBackupBtn"),
   refreshAgentsBtn: document.getElementById("refreshAgentsBtn"),
@@ -1023,12 +1022,12 @@ function lockWizardButtons(locked) {
   els.wizardSubmitBtn.disabled = disabled;
 }
 
-function openCreateWizard(seedName = "") {
+function openCreateWizard() {
   wizardState.open = true;
   wizardState.submitting = false;
   lockWizardButtons(false);
 
-  els.wizardAgentName.value = String(seedName || "").trim();
+  els.wizardAgentName.value = "";
   els.wizardModelAlias.value = "gpt4";
   els.wizardModelName.value = "";
   els.wizardApiBase.value = "https://api.openai.com/v1";
@@ -1129,7 +1128,6 @@ async function createAgentFromWizard() {
     await api.saveConfig(created.id, nextCfg);
     await api.startAgent(created.id);
 
-    els.newAgentName.value = "";
     closeCreateWizard();
 
     state.selectedAgentId = created.id;
@@ -1154,21 +1152,7 @@ function bindEvents() {
   els.quickConfigTabBtn.addEventListener("click", () => setConfigView("quick"));
   els.fullConfigTabBtn.addEventListener("click", () => setConfigView("full"));
 
-  const openWizardFromInput = () => {
-    const seed = String(els.newAgentName.value || "").trim();
-    openCreateWizard(seed);
-  };
-
-  els.createAgentBtn.addEventListener("click", openWizardFromInput);
-  els.newAgentName.addEventListener("keydown", (event) => {
-    if (event.isComposing || event.keyCode === 229) {
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      openWizardFromInput();
-    }
-  });
+  els.createAgentBtn.addEventListener("click", () => openCreateWizard());
 
   els.importBackupBtn.addEventListener("click", async () => {
     const preferred = window.prompt("Optional: agent name after import", "");
