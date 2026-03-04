@@ -7,11 +7,11 @@
 <br />
 
 <div align="center">
-  <img src="../resource/logo.png" alt="4claw logo" width="128" />
+  <img src="./docs/images/logo.png" alt="4claw logo" width="128" />
 </div>
 
 <div align="center">
-  <img src="../resource/banner.png" alt="4claw desktop banner" width="100%" />
+  <img src="./docs/images/banner.png" alt="4claw desktop banner" width="100%" />
 </div>
 
 # 4claw CLI Desktop
@@ -81,11 +81,11 @@
 
 ### 主控制台
 
-![Main Console](../resource/cli/main.png)
+![Main Console](./docs/images/main.png)
 
 ### 设置与配置页
 
-![Settings Panel](../resource/cli/setting.png)
+![Settings Panel](./docs/images/setting.png)
 
 ## 技术栈
 
