@@ -1,18 +1,18 @@
-const api = window.clawApi;
+﻿const api = window.clawApi;
 
 const state = {
   appInfo: null,
   agents: [],
   selectedAgentId: "",
   selectedTab: "dashboard",
+  selectedConfigView: "quick",
   configDraft: null,
   configOriginal: null,
   logs: "",
   backups: [],
   settings: {
     closeBehavior: "ask"
-  },
-  isEditingInput: false
+  }
 };
 
 const els = {
@@ -26,7 +26,7 @@ const els = {
   renameAgentBtn: document.getElementById("renameAgentBtn"),
   openAgentFolderBtn: document.getElementById("openAgentFolderBtn"),
   deleteAgentBtn: document.getElementById("deleteAgentBtn"),
-  tabs: Array.from(document.querySelectorAll(".tab-btn")),
+  tabs: Array.from(document.querySelectorAll("nav.tabs .tab-btn[data-tab]")),
   panes: {
     dashboard: document.getElementById("tab-dashboard"),
     config: document.getElementById("tab-config"),
@@ -37,6 +37,19 @@ const els = {
   importConfigBtn: document.getElementById("importConfigBtn"),
   exportConfigBtn: document.getElementById("exportConfigBtn"),
   reloadConfigBtn: document.getElementById("reloadConfigBtn"),
+  quickConfigTabBtn: document.getElementById("quickConfigTabBtn"),
+  fullConfigTabBtn: document.getElementById("fullConfigTabBtn"),
+  quickConfigPanel: document.getElementById("quickConfigPanel"),
+  fullConfigPanel: document.getElementById("fullConfigPanel"),
+  quickAgentName: document.getElementById("quickAgentName"),
+  quickModelAlias: document.getElementById("quickModelAlias"),
+  quickModelName: document.getElementById("quickModelName"),
+  quickApiBase: document.getElementById("quickApiBase"),
+  quickApiKey: document.getElementById("quickApiKey"),
+  quickTelegramEnabled: document.getElementById("quickTelegramEnabled"),
+  quickTelegramToken: document.getElementById("quickTelegramToken"),
+  quickTelegramAllowFrom: document.getElementById("quickTelegramAllowFrom"),
+  saveQuickConfigBtn: document.getElementById("saveQuickConfigBtn"),
   saveConfigBtn: document.getElementById("saveConfigBtn"),
   configEditor: document.getElementById("configEditor"),
   refreshLogsBtn: document.getElementById("refreshLogsBtn"),
@@ -46,7 +59,29 @@ const els = {
   exportBackupBtn: document.getElementById("exportBackupBtn"),
   backupList: document.getElementById("backupList"),
   saveSettingsBtn: document.getElementById("saveSettingsBtn"),
-  toastHost: document.getElementById("toastHost")
+  toastHost: document.getElementById("toastHost"),
+  createWizardModal: document.getElementById("createWizardModal"),
+  wizardStepLabel: document.getElementById("wizardStepLabel"),
+  wizardStep1: document.getElementById("wizardStep1"),
+  wizardStep2: document.getElementById("wizardStep2"),
+  wizardAgentName: document.getElementById("wizardAgentName"),
+  wizardModelAlias: document.getElementById("wizardModelAlias"),
+  wizardModelName: document.getElementById("wizardModelName"),
+  wizardApiBase: document.getElementById("wizardApiBase"),
+  wizardApiKey: document.getElementById("wizardApiKey"),
+  wizardTelegramEnabled: document.getElementById("wizardTelegramEnabled"),
+  wizardTelegramToken: document.getElementById("wizardTelegramToken"),
+  wizardTelegramAllowFrom: document.getElementById("wizardTelegramAllowFrom"),
+  wizardCancelBtn: document.getElementById("wizardCancelBtn"),
+  wizardPrevBtn: document.getElementById("wizardPrevBtn"),
+  wizardNextBtn: document.getElementById("wizardNextBtn"),
+  wizardSubmitBtn: document.getElementById("wizardSubmitBtn")
+};
+
+const wizardState = {
+  open: false,
+  step: 1,
+  submitting: false
 };
 
 let logsRefreshInFlight = false;
@@ -103,6 +138,21 @@ function fmtDate(value) {
   return d.toLocaleString();
 }
 
+function parseIdList(raw) {
+  const text = String(raw || "");
+  return text
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function stringifyIdList(list) {
+  if (!Array.isArray(list)) {
+    return "";
+  }
+  return list.map((item) => String(item)).join(", ");
+}
+
 function getSelectedAgent() {
   return state.agents.find((a) => a.id === state.selectedAgentId) || null;
 }
@@ -121,7 +171,7 @@ function getAtPath(path) {
 function ensureSelectedAgent() {
   const selected = getSelectedAgent();
   if (!selected) {
-    showInfo("请先选择一个 Agent。");
+    showInfo("Please select an agent first.");
     return null;
   }
   return selected;
@@ -156,7 +206,7 @@ async function saveSettingsAction() {
       closeBehavior: saved?.closeBehavior || "ask"
     };
     renderSettings();
-    showInfo("设置已保存");
+    showInfo("Settings saved.");
   } catch (error) {
     showError(error);
   }
@@ -175,8 +225,8 @@ function renderRuntimeInfo() {
   if (info.binary.found) {
     lines.push(`4claw Binary: ${info.binary.resolvedPath}`);
   } else {
-    lines.push(`未找到 ${info.binary.binaryName}`);
-    lines.push(`请放置到: ${info.binaryDropPath}`);
+    lines.push(`Missing ${info.binary.binaryName}`);
+    lines.push(`Drop binary at: ${info.binaryDropPath}`);
   }
   els.runtimeInfo.innerHTML = lines.join("<br/>");
 }
@@ -198,12 +248,20 @@ function setTab(tabName) {
   }
 }
 
+function setConfigView(nextView) {
+  const view = nextView === "full" ? "full" : "quick";
+  state.selectedConfigView = view;
+  els.quickConfigTabBtn.classList.toggle("active", view === "quick");
+  els.fullConfigTabBtn.classList.toggle("active", view === "full");
+  els.quickConfigPanel.classList.toggle("active", view === "quick");
+  els.fullConfigPanel.classList.toggle("active", view === "full");
+}
 function renderAgentList() {
   els.agentList.innerHTML = "";
   if (state.agents.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "暂无 Agent，点击“创建 Agent”开始。";
+    empty.textContent = "No agents yet. Click create to get started.";
     els.agentList.appendChild(empty);
     return;
   }
@@ -222,7 +280,7 @@ function renderAgentList() {
     name.textContent = agent.meta.name || agent.id;
     const badge = document.createElement("div");
     badge.className = `status-badge ${agent.status.running ? "status-running" : "status-stopped"}`;
-    badge.textContent = agent.status.running ? "运行中" : "已停止";
+    badge.textContent = agent.status.running ? "Running" : "Stopped";
     top.appendChild(name);
     top.appendChild(badge);
     card.appendChild(top);
@@ -231,8 +289,8 @@ function renderAgentList() {
     meta.className = "agent-meta";
     meta.innerHTML = `
       <div>ID: ${agent.id}</div>
-      <div>端口: ${(agent.config && agent.config.gateway && agent.config.gateway.port) || "-"}</div>
-      <div>最后启动: ${fmtDate(agent.meta.lastStartedAt)}</div>
+      <div>Port: ${(agent.config && agent.config.gateway && agent.config.gateway.port) || "-"}</div>
+      <div>Last Start: ${fmtDate(agent.meta.lastStartedAt)}</div>
     `;
     card.appendChild(meta);
 
@@ -241,7 +299,7 @@ function renderAgentList() {
 
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "btn btn-xs";
-    toggleBtn.textContent = agent.status.running ? "关闭" : "启动";
+    toggleBtn.textContent = agent.status.running ? "Stop" : "Start";
     toggleBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
       try {
@@ -258,12 +316,12 @@ function renderAgentList() {
 
     const backupBtn = document.createElement("button");
     backupBtn.className = "btn btn-xs";
-    backupBtn.textContent = "备份";
+    backupBtn.textContent = "Backup";
     backupBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
       try {
         await api.createBackup(agent.id);
-        showInfo("备份已创建");
+        showInfo("Backup created.");
         if (agent.id === state.selectedAgentId) {
           await refreshBackups();
         }
@@ -281,14 +339,14 @@ function renderAgentList() {
 
 function renderSelectedTitle() {
   const selected = getSelectedAgent();
-  els.selectedAgentTitle.textContent = selected ? `${selected.meta.name || selected.id} (${selected.id})` : "未选择 Agent";
+  els.selectedAgentTitle.textContent = selected ? `${selected.meta.name || selected.id} (${selected.id})` : "No Agent Selected";
 }
 
 function renderDashboard() {
   const pane = els.panes.dashboard;
   const selected = getSelectedAgent();
   if (!selected) {
-    pane.innerHTML = `<div class="empty-state">选择左侧 Agent 后可查看状态和控制按钮。</div>`;
+    pane.innerHTML = '<div class="empty-state">Select an agent to view status and controls.</div>';
     return;
   }
 
@@ -296,11 +354,11 @@ function renderDashboard() {
   pane.innerHTML = `
     <div class="dashboard-grid">
       <div class="stat-card">
-        <div class="stat-title">运行状态</div>
-        <div class="stat-value">${selected.status.running ? "运行中" : "已停止"}</div>
+        <div class="stat-title">Status</div>
+        <div class="stat-value">${selected.status.running ? "Running" : "Stopped"}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">进程 PID</div>
+        <div class="stat-title">PID</div>
         <div class="stat-value">${selected.status.pid || "-"}</div>
       </div>
       <div class="stat-card">
@@ -308,24 +366,24 @@ function renderDashboard() {
         <div class="stat-value">${port}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">创建时间</div>
+        <div class="stat-title">Created At</div>
         <div class="stat-value">${fmtDate(selected.meta.createdAt)}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">最后修改</div>
+        <div class="stat-title">Updated At</div>
         <div class="stat-value">${fmtDate(selected.meta.updatedAt)}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">最后启动</div>
+        <div class="stat-title">Last Start</div>
         <div class="stat-value">${fmtDate(selected.meta.lastStartedAt)}</div>
       </div>
     </div>
     <div class="dashboard-actions">
-      <button class="btn btn-primary" id="dashToggleBtn">${selected.status.running ? "关闭 Agent" : "启动 Agent"}</button>
-      <button class="btn btn-soft" id="dashBackupBtn">创建备份</button>
-      <button class="btn btn-soft" id="dashExportBtn">导出备份</button>
-      <button class="btn btn-soft" id="dashLogsBtn">查看日志</button>
-      <button class="btn btn-soft" id="dashConfigBtn">编辑 Config</button>
+      <button class="btn btn-primary" id="dashToggleBtn">${selected.status.running ? "Stop Agent" : "Start Agent"}</button>
+      <button class="btn btn-soft" id="dashBackupBtn">Create Backup</button>
+      <button class="btn btn-soft" id="dashExportBtn">Export Backup</button>
+      <button class="btn btn-soft" id="dashLogsBtn">View Logs</button>
+      <button class="btn btn-soft" id="dashConfigBtn">Open Config</button>
     </div>
   `;
 
@@ -345,7 +403,7 @@ function renderDashboard() {
   document.getElementById("dashBackupBtn").addEventListener("click", async () => {
     try {
       await api.createBackup(selected.id);
-      showInfo("备份已创建");
+      showInfo("Backup created.");
       await refreshBackups();
     } catch (error) {
       showError(error);
@@ -367,6 +425,7 @@ function renderDashboard() {
 
   document.getElementById("dashConfigBtn").addEventListener("click", () => {
     setTab("config");
+    setConfigView("quick");
   });
 }
 
@@ -403,12 +462,166 @@ async function selectAgent(id) {
   await Promise.all([loadConfig(), refreshLogs(), refreshBackups()]);
 }
 
-async function loadConfig() {
+function ensureConfigRoots(cfg) {
+  if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) {
+    return {};
+  }
+  if (!cfg.agents || typeof cfg.agents !== "object") {
+    cfg.agents = {};
+  }
+  if (!cfg.agents.defaults || typeof cfg.agents.defaults !== "object") {
+    cfg.agents.defaults = {};
+  }
+  if (!Array.isArray(cfg.model_list)) {
+    cfg.model_list = [];
+  }
+  if (!cfg.channels || typeof cfg.channels !== "object") {
+    cfg.channels = {};
+  }
+  if (!cfg.channels.telegram || typeof cfg.channels.telegram !== "object") {
+    cfg.channels.telegram = {
+      enabled: false,
+      token: "",
+      allow_from: []
+    };
+  }
+  return cfg;
+}
+
+function findModelEntry(cfg, alias) {
+  if (!cfg || !Array.isArray(cfg.model_list)) {
+    return null;
+  }
+  const key = String(alias || "").trim();
+  if (!key) {
+    return cfg.model_list.find((item) => item && typeof item === "object") || null;
+  }
+  return cfg.model_list.find((item) => item && typeof item === "object" && item.model_name === key) || null;
+}
+
+function getQuickDataFromConfig(cfg, selected) {
+  const safe = ensureConfigRoots(safeClone(cfg || {}));
+  const defaults = safe.agents.defaults || {};
+  const defaultAlias = String(defaults.model || "").trim() || "gpt4";
+  const entry = findModelEntry(safe, defaultAlias) || {};
+  const telegram = safe.channels.telegram || {};
+
+  return {
+    agentName: selected ? String(selected.meta.name || selected.id || "") : "",
+    modelAlias: defaultAlias,
+    modelName: String(entry.model || ""),
+    apiBase: String(entry.api_base || ""),
+    apiKey: String(entry.api_key || ""),
+    telegramEnabled: Boolean(telegram.enabled),
+    telegramToken: String(telegram.token || ""),
+    telegramAllowFrom: stringifyIdList(telegram.allow_from)
+  };
+}
+
+function renderQuickConfig() {
+  const selected = getSelectedAgent();
+  if (!selected || !state.configDraft) {
+    els.quickAgentName.value = "";
+    els.quickModelAlias.value = "";
+    els.quickModelName.value = "";
+    els.quickApiBase.value = "";
+    els.quickApiKey.value = "";
+    els.quickTelegramEnabled.checked = false;
+    els.quickTelegramToken.value = "";
+    els.quickTelegramAllowFrom.value = "";
+    return;
+  }
+
+  const quick = getQuickDataFromConfig(state.configDraft, selected);
+  els.quickAgentName.value = quick.agentName;
+  els.quickModelAlias.value = quick.modelAlias;
+  els.quickModelName.value = quick.modelName;
+  els.quickApiBase.value = quick.apiBase;
+  els.quickApiKey.value = quick.apiKey;
+  els.quickTelegramEnabled.checked = quick.telegramEnabled;
+  els.quickTelegramToken.value = quick.telegramToken;
+  els.quickTelegramAllowFrom.value = quick.telegramAllowFrom;
+}
+
+function getQuickDataFromInputs() {
+  return {
+    agentName: String(els.quickAgentName.value || "").trim(),
+    modelAlias: String(els.quickModelAlias.value || "").trim(),
+    modelName: String(els.quickModelName.value || "").trim(),
+    apiBase: String(els.quickApiBase.value || "").trim(),
+    apiKey: String(els.quickApiKey.value || "").trim(),
+    telegramEnabled: Boolean(els.quickTelegramEnabled.checked),
+    telegramToken: String(els.quickTelegramToken.value || "").trim(),
+    telegramAllowFrom: String(els.quickTelegramAllowFrom.value || "")
+  };
+}
+
+function applyQuickDataToConfig(cfg, quick) {
+  const safe = ensureConfigRoots(cfg);
+  const alias = quick.modelAlias || String(safe.agents.defaults.model || "").trim() || "gpt4";
+  safe.agents.defaults.model = alias;
+
+  if (!Array.isArray(safe.model_list)) {
+    safe.model_list = [];
+  }
+
+  let entryIndex = safe.model_list.findIndex(
+    (item) => item && typeof item === "object" && item.model_name === alias
+  );
+  if (entryIndex < 0) {
+    safe.model_list.push({ model_name: alias });
+    entryIndex = safe.model_list.length - 1;
+  }
+
+  const entry = safe.model_list[entryIndex] && typeof safe.model_list[entryIndex] === "object" ? safe.model_list[entryIndex] : {};
+  entry.model_name = alias;
+  entry.model = quick.modelName;
+  entry.api_base = quick.apiBase;
+  entry.api_key = quick.apiKey;
+  safe.model_list[entryIndex] = entry;
+
+  const telegram = safe.channels.telegram || {};
+  telegram.enabled = Boolean(quick.telegramEnabled);
+  telegram.token = quick.telegramToken;
+  telegram.allow_from = parseIdList(quick.telegramAllowFrom);
+  safe.channels.telegram = telegram;
+
+  return safe;
+}
+
+async function saveQuickConfig() {
   const selected = ensureSelectedAgent();
+  if (!selected || !state.configDraft) {
+    return;
+  }
+
+  try {
+    const quick = getQuickDataFromInputs();
+    const nextCfg = applyQuickDataToConfig(safeClone(state.configDraft), quick);
+
+    if (quick.agentName && quick.agentName !== (selected.meta.name || selected.id)) {
+      await api.renameAgent(selected.id, quick.agentName);
+    }
+
+    await api.saveConfig(selected.id, nextCfg);
+    state.configDraft = safeClone(nextCfg);
+    state.configOriginal = safeClone(nextCfg);
+
+    await refreshAgents(true);
+    await selectAgent(selected.id);
+    showInfo("Quick config saved.");
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function loadConfig() {
+  const selected = getSelectedAgent();
   if (!selected) {
     state.configDraft = null;
     state.configOriginal = null;
-    els.configEditor.innerHTML = `<div class="empty-state">暂无配置可展示。</div>`;
+    renderQuickConfig();
+    els.configEditor.innerHTML = '<div class="empty-state">No config available.</div>';
     return;
   }
 
@@ -416,10 +629,12 @@ async function loadConfig() {
     const cfg = await api.loadConfig(selected.id);
     state.configOriginal = safeClone(cfg);
     state.configDraft = safeClone(cfg);
+    renderQuickConfig();
     renderConfigEditor();
   } catch (error) {
     showError(error);
-    els.configEditor.innerHTML = `<div class="empty-state">config.json 读取失败。</div>`;
+    renderQuickConfig();
+    els.configEditor.innerHTML = '<div class="empty-state">Failed to load config.json.</div>';
   }
 }
 
@@ -431,13 +646,12 @@ async function saveConfig() {
   try {
     await api.saveConfig(selected.id, state.configDraft);
     state.configOriginal = safeClone(state.configDraft);
-    showInfo("Config 已保存");
+    showInfo("Full config saved.");
     await refreshAgents(true);
   } catch (error) {
     showError(error);
   }
 }
-
 function typeOfValue(value) {
   if (value === null) {
     return "null";
@@ -487,7 +701,7 @@ function removeAtPath(path) {
 }
 
 function addObjectField(path) {
-  const key = window.prompt("请输入字段名");
+  const key = window.prompt("New field name");
   if (!key) {
     return;
   }
@@ -496,7 +710,7 @@ function addObjectField(path) {
     target = target[seg];
   }
   if (Object.prototype.hasOwnProperty.call(target, key)) {
-    showInfo("字段已存在");
+    showInfo("Field already exists.");
     return;
   }
   target[key] = "";
@@ -641,7 +855,7 @@ function createNodeEditor(value, path, title) {
   if (valueType === "object") {
     const addBtn = document.createElement("button");
     addBtn.className = "btn btn-xs";
-    addBtn.textContent = "新增字段";
+    addBtn.textContent = "Add Field";
     addBtn.addEventListener("click", () => addObjectField(path));
     headerActions.appendChild(addBtn);
   } else {
@@ -680,7 +894,7 @@ function createNodeEditor(value, path, title) {
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn btn-xs json-remove-btn";
-    removeBtn.textContent = "删除";
+    removeBtn.textContent = "Delete";
     removeBtn.addEventListener("click", () => removeAtPath(childPath));
 
     row.appendChild(keyEl);
@@ -692,7 +906,7 @@ function createNodeEditor(value, path, title) {
   if (entries.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = valueType === "array" ? "数组为空，可点击上方 + 按钮添加项。" : "对象为空，可点击“新增字段”。";
+    empty.textContent = valueType === "array" ? "Empty array, use + buttons to add items." : "Empty object, click Add Field.";
     children.appendChild(empty);
   }
 
@@ -702,7 +916,7 @@ function createNodeEditor(value, path, title) {
 
 function renderConfigEditor() {
   if (!state.configDraft) {
-    els.configEditor.innerHTML = `<div class="empty-state">选择 Agent 后可编辑 config.json。</div>`;
+    els.configEditor.innerHTML = '<div class="empty-state">Select an agent to edit config.json.</div>';
     return;
   }
   els.configEditor.innerHTML = "";
@@ -737,7 +951,7 @@ async function refreshLogs() {
 async function refreshBackups() {
   const selected = getSelectedAgent();
   if (!selected) {
-    els.backupList.innerHTML = `<div class="empty-state">选择 Agent 后显示备份列表。</div>`;
+    els.backupList.innerHTML = '<div class="empty-state">Select an agent to view backups.</div>';
     return;
   }
   try {
@@ -751,7 +965,7 @@ async function refreshBackups() {
 function renderBackups() {
   els.backupList.innerHTML = "";
   if (!state.backups.length) {
-    els.backupList.innerHTML = `<div class="empty-state">暂无备份。点击“创建备份”即可生成。</div>`;
+    els.backupList.innerHTML = '<div class="empty-state">No backups yet.</div>';
     return;
   }
 
@@ -762,24 +976,24 @@ function renderBackups() {
     main.className = "backup-main";
     main.innerHTML = `
       <div class="backup-name">${item.fileName}</div>
-      <div class="backup-meta">时间: ${fmtDate(item.createdAt)}</div>
-      <div class="backup-meta">大小: ${bytesToText(item.size)}</div>
+      <div class="backup-meta">Time: ${fmtDate(item.createdAt)}</div>
+      <div class="backup-meta">Size: ${bytesToText(item.size)}</div>
     `;
 
     const actions = document.createElement("div");
     actions.className = "json-actions-inline";
     const restoreBtn = document.createElement("button");
     restoreBtn.className = "btn btn-xs";
-    restoreBtn.textContent = "恢复为新 Agent";
+    restoreBtn.textContent = "Restore As New Agent";
     restoreBtn.addEventListener("click", async () => {
-      const name = window.prompt("可选：为新 Agent 指定名称（可留空）", "");
+      const name = window.prompt("Optional: new agent name", "");
       try {
         const imported = await api.restoreBackup(item.fileName, name || "");
         if (imported && imported.id) {
           state.selectedAgentId = imported.id;
           await refreshAgents(true);
           await selectAgent(imported.id);
-          showInfo("备份恢复成功");
+          showInfo("Backup restored.");
         }
       } catch (error) {
         showError(error);
@@ -791,82 +1005,173 @@ function renderBackups() {
     els.backupList.appendChild(row);
   }
 }
+function setWizardStep(step) {
+  wizardState.step = step === 2 ? 2 : 1;
+  els.wizardStep1.classList.toggle("active", wizardState.step === 1);
+  els.wizardStep2.classList.toggle("active", wizardState.step === 2);
+  els.wizardStepLabel.textContent = `Step ${wizardState.step} / 2`;
+  els.wizardPrevBtn.style.display = wizardState.step === 1 ? "none" : "inline-block";
+  els.wizardNextBtn.style.display = wizardState.step === 1 ? "inline-block" : "none";
+  els.wizardSubmitBtn.style.display = wizardState.step === 2 ? "inline-block" : "none";
+}
+
+function lockWizardButtons(locked) {
+  const disabled = Boolean(locked);
+  els.wizardCancelBtn.disabled = disabled;
+  els.wizardPrevBtn.disabled = disabled;
+  els.wizardNextBtn.disabled = disabled;
+  els.wizardSubmitBtn.disabled = disabled;
+}
+
+function openCreateWizard(seedName = "") {
+  wizardState.open = true;
+  wizardState.submitting = false;
+  lockWizardButtons(false);
+
+  els.wizardAgentName.value = String(seedName || "").trim();
+  els.wizardModelAlias.value = "gpt4";
+  els.wizardModelName.value = "";
+  els.wizardApiBase.value = "https://api.openai.com/v1";
+  els.wizardApiKey.value = "";
+  els.wizardTelegramEnabled.checked = true;
+  els.wizardTelegramToken.value = "";
+  els.wizardTelegramAllowFrom.value = "";
+
+  setWizardStep(1);
+  els.createWizardModal.classList.remove("hidden");
+  window.setTimeout(() => {
+    els.wizardAgentName.focus();
+  }, 0);
+}
+
+function closeCreateWizard() {
+  wizardState.open = false;
+  wizardState.submitting = false;
+  els.createWizardModal.classList.add("hidden");
+}
+
+function collectWizardData() {
+  return {
+    agentName: String(els.wizardAgentName.value || "").trim(),
+    modelAlias: String(els.wizardModelAlias.value || "").trim(),
+    modelName: String(els.wizardModelName.value || "").trim(),
+    apiBase: String(els.wizardApiBase.value || "").trim(),
+    apiKey: String(els.wizardApiKey.value || "").trim(),
+    telegramEnabled: Boolean(els.wizardTelegramEnabled.checked),
+    telegramToken: String(els.wizardTelegramToken.value || "").trim(),
+    telegramAllowFrom: String(els.wizardTelegramAllowFrom.value || "")
+  };
+}
+
+function validateWizardStep(step) {
+  const data = collectWizardData();
+
+  if (step === 1) {
+    if (!data.agentName) {
+      showInfo("Agent name is required.");
+      els.wizardAgentName.focus();
+      return false;
+    }
+    if (!data.modelAlias) {
+      showInfo("Model alias is required.");
+      els.wizardModelAlias.focus();
+      return false;
+    }
+    if (!data.modelName) {
+      showInfo("Model name is required.");
+      els.wizardModelName.focus();
+      return false;
+    }
+    if (!data.apiBase) {
+      showInfo("API base is required.");
+      els.wizardApiBase.focus();
+      return false;
+    }
+    if (!data.apiKey) {
+      showInfo("API key is required.");
+      els.wizardApiKey.focus();
+      return false;
+    }
+  }
+
+  if (step === 2 && data.telegramEnabled) {
+    if (!data.telegramToken) {
+      showInfo("Telegram bot token is required when Telegram is enabled.");
+      els.wizardTelegramToken.focus();
+      return false;
+    }
+    if (parseIdList(data.telegramAllowFrom).length === 0) {
+      showInfo("At least one allowed Telegram user ID is required.");
+      els.wizardTelegramAllowFrom.focus();
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function createAgentFromWizard() {
+  if (wizardState.submitting) {
+    return;
+  }
+  if (!validateWizardStep(2)) {
+    return;
+  }
+
+  wizardState.submitting = true;
+  lockWizardButtons(true);
+
+  try {
+    const data = collectWizardData();
+    const created = await api.createAgent(data.agentName);
+    const loaded = await api.loadConfig(created.id);
+    const nextCfg = applyQuickDataToConfig(ensureConfigRoots(safeClone(loaded)), data);
+    await api.saveConfig(created.id, nextCfg);
+    await api.startAgent(created.id);
+
+    els.newAgentName.value = "";
+    closeCreateWizard();
+
+    state.selectedAgentId = created.id;
+    await refreshAgents(true);
+    await selectAgent(created.id);
+    setTab("dashboard");
+
+    showInfo("Agent created and started.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    wizardState.submitting = false;
+    lockWizardButtons(false);
+  }
+}
 
 function bindEvents() {
-  // Force input focus reliability after dynamic DOM updates.
-  document.addEventListener("pointerdown", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
-      return;
-    }
-    target.disabled = false;
-    target.readOnly = false;
-    requestAnimationFrame(() => {
-      if (document.activeElement !== target) {
-        target.focus();
-      }
-    });
-  });
-
-  const markEditing = () => {
-    const active = document.activeElement;
-    state.isEditingInput = Boolean(
-      active &&
-        (active.tagName === "INPUT" ||
-          active.tagName === "TEXTAREA" ||
-          active.tagName === "SELECT" ||
-          active.isContentEditable)
-    );
-  };
-
-  document.addEventListener("focusin", markEditing);
-  document.addEventListener("focusout", () => {
-    setTimeout(markEditing, 0);
-  });
-
-  // Prevent global handlers from stealing key events while typing.
-  document.addEventListener(
-    "keydown",
-    (event) => {
-      const active = document.activeElement;
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) {
-        event.stopPropagation();
-      }
-    },
-    true
-  );
-
   els.tabs.forEach((tab) => {
     tab.addEventListener("click", () => setTab(tab.dataset.tab));
   });
 
-  const createAgentFromInput = async () => {
-    const name = els.newAgentName.value.trim();
-    try {
-      const created = await api.createAgent(name || "agent");
-      els.newAgentName.value = "";
-      state.selectedAgentId = created.id;
-      await refreshAgents(true);
-      await selectAgent(created.id);
-    } catch (error) {
-      showError(error);
-    }
+  els.quickConfigTabBtn.addEventListener("click", () => setConfigView("quick"));
+  els.fullConfigTabBtn.addEventListener("click", () => setConfigView("full"));
+
+  const openWizardFromInput = () => {
+    const seed = String(els.newAgentName.value || "").trim();
+    openCreateWizard(seed);
   };
 
-  els.createAgentBtn.addEventListener("click", createAgentFromInput);
-  els.newAgentName.addEventListener("keydown", async (event) => {
-    // IME composition should not trigger create action.
+  els.createAgentBtn.addEventListener("click", openWizardFromInput);
+  els.newAgentName.addEventListener("keydown", (event) => {
     if (event.isComposing || event.keyCode === 229) {
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      await createAgentFromInput();
+      openWizardFromInput();
     }
   });
 
   els.importBackupBtn.addEventListener("click", async () => {
-    const preferred = window.prompt("可选：导入后 Agent 名称（可留空）", "");
+    const preferred = window.prompt("Optional: agent name after import", "");
     try {
       const imported = await api.importBackup(preferred || "");
       if (imported && imported.id) {
@@ -892,7 +1197,7 @@ function bindEvents() {
     if (!selected) {
       return;
     }
-    const name = window.prompt("新的 Agent 名称", selected.meta.name || selected.id);
+    const name = window.prompt("New agent name", selected.meta.name || selected.id);
     if (name === null) {
       return;
     }
@@ -900,6 +1205,7 @@ function bindEvents() {
       await api.renameAgent(selected.id, name);
       await refreshAgents(true);
       renderSelectedTitle();
+      renderQuickConfig();
     } catch (error) {
       showError(error);
     }
@@ -922,7 +1228,7 @@ function bindEvents() {
     if (!selected) {
       return;
     }
-    const yes = window.confirm(`确认删除 Agent "${selected.meta.name || selected.id}"？\n此操作会删除其 config/workspace/logs。`);
+    const yes = window.confirm(`Delete agent "${selected.meta.name || selected.id}"? This removes config/workspace/logs.`);
     if (!yes) {
       return;
     }
@@ -946,7 +1252,7 @@ function bindEvents() {
     try {
       const out = await api.importConfig(selected.id);
       if (out) {
-        showInfo("Config 导入完成");
+        showInfo("Config imported.");
         await refreshAgents(true);
         await loadConfig();
       }
@@ -963,7 +1269,7 @@ function bindEvents() {
     try {
       const out = await api.exportConfig(selected.id);
       if (out) {
-        showInfo(`Config 已导出: ${out.filePath}`);
+        showInfo(`Config exported: ${out.filePath}`);
       }
     } catch (error) {
       showError(error);
@@ -971,6 +1277,7 @@ function bindEvents() {
   });
 
   els.reloadConfigBtn.addEventListener("click", () => loadConfig());
+  els.saveQuickConfigBtn.addEventListener("click", () => saveQuickConfig());
   els.saveConfigBtn.addEventListener("click", () => saveConfig());
   els.refreshLogsBtn.addEventListener("click", () => refreshLogs());
 
@@ -979,7 +1286,7 @@ function bindEvents() {
     if (!selected) {
       return;
     }
-    if (!window.confirm("确认清空当前 Agent 日志？")) {
+    if (!window.confirm("Clear logs for current agent?")) {
       return;
     }
     try {
@@ -997,7 +1304,7 @@ function bindEvents() {
     }
     try {
       await api.createBackup(selected.id);
-      showInfo("备份创建成功");
+      showInfo("Backup created.");
       await refreshBackups();
     } catch (error) {
       showError(error);
@@ -1012,7 +1319,7 @@ function bindEvents() {
     try {
       const out = await api.exportBackup(selected.id);
       if (out) {
-        showInfo(`导出完成: ${out.filePath}`);
+        showInfo(`Backup exported: ${out.filePath}`);
       }
       await refreshBackups();
     } catch (error) {
@@ -1022,6 +1329,44 @@ function bindEvents() {
 
   els.saveSettingsBtn.addEventListener("click", () => {
     saveSettingsAction();
+  });
+
+  els.wizardCancelBtn.addEventListener("click", () => {
+    if (!wizardState.submitting) {
+      closeCreateWizard();
+    }
+  });
+
+  els.wizardPrevBtn.addEventListener("click", () => {
+    if (!wizardState.submitting) {
+      setWizardStep(1);
+    }
+  });
+
+  els.wizardNextBtn.addEventListener("click", () => {
+    if (wizardState.submitting) {
+      return;
+    }
+    if (!validateWizardStep(1)) {
+      return;
+    }
+    setWizardStep(2);
+  });
+
+  els.wizardSubmitBtn.addEventListener("click", () => {
+    createAgentFromWizard();
+  });
+
+  els.createWizardModal.addEventListener("click", (event) => {
+    if (event.target === els.createWizardModal && !wizardState.submitting) {
+      closeCreateWizard();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && wizardState.open && !wizardState.submitting) {
+      closeCreateWizard();
+    }
   });
 }
 
@@ -1035,6 +1380,8 @@ async function boot() {
   }
   renderRuntimeInfo();
   await loadSettings();
+  setConfigView("quick");
+
   await refreshAgents(false);
   if (state.selectedAgentId) {
     await selectAgent(state.selectedAgentId);

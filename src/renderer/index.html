@@ -14,7 +14,7 @@
           <img src="../../assets/logo.png" alt="4claw logo" class="brand-logo" />
           <div>
             <h1>4claw CLI</h1>
-            <p>简易便捷的桌面端4claw cli</p>
+            <p>Simple desktop shell for 4claw</p>
           </div>
         </div>
         <div id="runtimeInfo" class="runtime-info"></div>
@@ -23,14 +23,14 @@
       <main class="layout">
         <aside class="sidebar glass">
           <section class="panel-head">
-            <h2>Agent 列表</h2>
+            <h2>Agent List</h2>
           </section>
           <section class="create-box">
-            <input id="newAgentName" type="text" spellcheck="false" autocomplete="off" placeholder="输入新 Agent 名称" />
-            <button id="createAgentBtn" class="btn btn-primary">创建 Agent</button>
+            <input id="newAgentName" type="text" spellcheck="false" autocomplete="off" placeholder="Agent name (optional)" />
+            <button id="createAgentBtn" class="btn btn-primary">Create Agent (Wizard)</button>
             <div class="row-actions">
-              <button id="importBackupBtn" class="btn btn-soft">导入备份</button>
-              <button id="refreshAgentsBtn" class="btn btn-soft">刷新</button>
+              <button id="importBackupBtn" class="btn btn-soft">Import Backup</button>
+              <button id="refreshAgentsBtn" class="btn btn-soft">Refresh</button>
             </div>
           </section>
           <section id="agentList" class="agent-list"></section>
@@ -38,20 +38,20 @@
 
         <section class="content">
           <div class="content-top glass">
-            <div id="selectedAgentTitle" class="selected-title">未选择 Agent</div>
+            <div id="selectedAgentTitle" class="selected-title">No Agent Selected</div>
             <div class="top-actions">
-              <button id="renameAgentBtn" class="btn btn-soft">重命名</button>
-              <button id="openAgentFolderBtn" class="btn btn-soft">打开目录</button>
-              <button id="deleteAgentBtn" class="btn btn-danger">删除 Agent</button>
+              <button id="renameAgentBtn" class="btn btn-soft">Rename</button>
+              <button id="openAgentFolderBtn" class="btn btn-soft">Open Folder</button>
+              <button id="deleteAgentBtn" class="btn btn-danger">Delete</button>
             </div>
           </div>
 
           <nav class="tabs glass">
-            <button class="tab-btn active" data-tab="dashboard">总览</button>
-            <button class="tab-btn" data-tab="config">Config 参数</button>
-            <button class="tab-btn" data-tab="logs">运行日志</button>
-            <button class="tab-btn" data-tab="backups">备份中心</button>
-            <button class="tab-btn" data-tab="settings">设置</button>
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="config">Config</button>
+            <button class="tab-btn" data-tab="logs">Logs</button>
+            <button class="tab-btn" data-tab="backups">Backups</button>
+            <button class="tab-btn" data-tab="settings">Settings</button>
           </nav>
 
           <section class="tab-body">
@@ -59,55 +59,160 @@
 
             <article id="tab-config" class="tab-pane glass">
               <div class="pane-toolbar">
-                <button id="importConfigBtn" class="btn btn-soft">导入 Config</button>
-                <button id="exportConfigBtn" class="btn btn-soft">导出 Config</button>
-                <button id="reloadConfigBtn" class="btn btn-soft">重新加载</button>
-                <button id="saveConfigBtn" class="btn btn-primary">保存 Config</button>
+                <button id="importConfigBtn" class="btn btn-soft">Import Config</button>
+                <button id="exportConfigBtn" class="btn btn-soft">Export Config</button>
+                <button id="reloadConfigBtn" class="btn btn-soft">Reload</button>
               </div>
-              <div id="configEditor" class="config-editor"></div>
+
+              <div class="config-view-tabs">
+                <button id="quickConfigTabBtn" class="tab-btn active">Quick Config</button>
+                <button id="fullConfigTabBtn" class="tab-btn">Full Config</button>
+              </div>
+
+              <div id="quickConfigPanel" class="config-subpane active">
+                <div class="quick-config-grid">
+                  <label class="quick-field">
+                    <span>Agent Name</span>
+                    <input id="quickAgentName" type="text" />
+                  </label>
+                  <label class="quick-field">
+                    <span>Model Alias</span>
+                    <input id="quickModelAlias" type="text" placeholder="e.g. gpt4" />
+                  </label>
+                  <label class="quick-field">
+                    <span>Model Name</span>
+                    <input id="quickModelName" type="text" placeholder="e.g. openai/gpt-5.2" />
+                  </label>
+                  <label class="quick-field">
+                    <span>API Base</span>
+                    <input id="quickApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
+                  </label>
+                  <label class="quick-field">
+                    <span>API Key</span>
+                    <input id="quickApiKey" type="text" />
+                  </label>
+                  <label class="quick-field quick-field-checkbox">
+                    <span>Enable Telegram</span>
+                    <input id="quickTelegramEnabled" type="checkbox" />
+                  </label>
+                  <label class="quick-field">
+                    <span>Telegram Bot Token</span>
+                    <input id="quickTelegramToken" type="text" />
+                  </label>
+                  <label class="quick-field">
+                    <span>Allowed User IDs (comma separated)</span>
+                    <input id="quickTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
+                  </label>
+                </div>
+                <div class="pane-toolbar">
+                  <button id="saveQuickConfigBtn" class="btn btn-primary">Save Quick Config</button>
+                </div>
+              </div>
+
+              <div id="fullConfigPanel" class="config-subpane">
+                <div class="pane-toolbar">
+                  <button id="saveConfigBtn" class="btn btn-primary">Save Full Config</button>
+                </div>
+                <div id="configEditor" class="config-editor"></div>
+              </div>
             </article>
 
             <article id="tab-logs" class="tab-pane glass">
               <div class="pane-toolbar">
-                <button id="refreshLogsBtn" class="btn btn-soft">刷新日志</button>
-                <button id="clearLogsBtn" class="btn btn-soft">清空日志</button>
+                <button id="refreshLogsBtn" class="btn btn-soft">Refresh Logs</button>
+                <button id="clearLogsBtn" class="btn btn-soft">Clear Logs</button>
               </div>
               <pre id="logViewer" class="log-viewer"></pre>
             </article>
 
             <article id="tab-backups" class="tab-pane glass">
               <div class="pane-toolbar">
-                <button id="createBackupBtn" class="btn btn-primary">创建备份</button>
-                <button id="exportBackupBtn" class="btn btn-soft">导出备份</button>
+                <button id="createBackupBtn" class="btn btn-primary">Create Backup</button>
+                <button id="exportBackupBtn" class="btn btn-soft">Export Backup</button>
               </div>
               <div id="backupList" class="backup-list"></div>
             </article>
 
             <article id="tab-settings" class="tab-pane glass">
               <div class="settings-panel">
-                <h3>关闭窗口行为</h3>
+                <h3>Window Close Behavior</h3>
                 <label class="settings-option">
                   <input type="radio" name="closeBehavior" value="ask" checked />
-                  每次询问
+                  Ask every time
                 </label>
                 <label class="settings-option">
                   <input type="radio" name="closeBehavior" value="minimize" />
-                  最小化运行
+                  Minimize to tray
                 </label>
                 <label class="settings-option">
                   <input type="radio" name="closeBehavior" value="exit" />
-                  直接关闭
+                  Exit directly
                 </label>
                 <div class="pane-toolbar">
-                  <button id="saveSettingsBtn" class="btn btn-primary">保存设置</button>
+                  <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
                 </div>
-                <p class="settings-hint">如果选择“每次询问”，关闭时会出现“是否记住本次选择”。</p>
+                <p class="settings-hint">When set to Ask, close dialog includes a remember checkbox.</p>
               </div>
             </article>
           </section>
         </section>
       </main>
     </div>
+
+    <div id="createWizardModal" class="wizard-mask hidden">
+      <div class="wizard-dialog glass">
+        <div class="wizard-head">
+          <h3>Create Agent Wizard</h3>
+          <div id="wizardStepLabel" class="wizard-step-label">Step 1 / 2</div>
+        </div>
+
+        <div id="wizardStep1" class="wizard-step active">
+          <label class="quick-field">
+            <span>Agent Name</span>
+            <input id="wizardAgentName" type="text" />
+          </label>
+          <label class="quick-field">
+            <span>Model Alias</span>
+            <input id="wizardModelAlias" type="text" value="gpt4" />
+          </label>
+          <label class="quick-field">
+            <span>Model Name</span>
+            <input id="wizardModelName" type="text" placeholder="e.g. openai/gpt-5.2" />
+          </label>
+          <label class="quick-field">
+            <span>API Base</span>
+            <input id="wizardApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
+          </label>
+          <label class="quick-field">
+            <span>API Key</span>
+            <input id="wizardApiKey" type="text" />
+          </label>
+        </div>
+
+        <div id="wizardStep2" class="wizard-step">
+          <label class="quick-field quick-field-checkbox">
+            <span>Enable Telegram</span>
+            <input id="wizardTelegramEnabled" type="checkbox" checked />
+          </label>
+          <label class="quick-field">
+            <span>Telegram Bot Token</span>
+            <input id="wizardTelegramToken" type="text" />
+          </label>
+          <label class="quick-field">
+            <span>Allowed User IDs (comma separated)</span>
+            <input id="wizardTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
+          </label>
+        </div>
+
+        <div class="wizard-actions">
+          <button id="wizardCancelBtn" class="btn btn-soft">Cancel</button>
+          <button id="wizardPrevBtn" class="btn btn-soft">Back</button>
+          <button id="wizardNextBtn" class="btn btn-primary">Next</button>
+          <button id="wizardSubmitBtn" class="btn btn-primary">Create & Start</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toastHost" class="toast-host"></div>
     <script src="./app.js"></script>
   </body>

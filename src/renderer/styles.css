@@ -563,6 +563,99 @@ button {
   font-size: 12px;
 }
 
+.config-view-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.config-subpane {
+  display: none;
+}
+
+.config-subpane.active {
+  display: block;
+}
+
+.quick-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 252, 238, 0.88);
+  padding: 12px;
+}
+
+.quick-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.quick-field span {
+  font-weight: 600;
+}
+
+.quick-field-checkbox {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.wizard-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(58, 45, 18, 0.28);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 9998;
+  padding: 16px;
+}
+
+.wizard-mask.hidden {
+  display: none;
+}
+
+.wizard-dialog {
+  width: min(760px, 96vw);
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.wizard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.wizard-head h3 {
+  margin: 0;
+}
+
+.wizard-step-label {
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.wizard-step {
+  display: none;
+  gap: 10px;
+}
+
+.wizard-step.active {
+  display: grid;
+}
+
+.wizard-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .toast-host {
   position: fixed;
   right: 16px;
@@ -597,5 +690,9 @@ button {
 
   .json-primitive {
     grid-template-columns: 90px minmax(0, 1fr);
+  }
+
+  .quick-config-grid {
+    grid-template-columns: 1fr;
   }
 }
