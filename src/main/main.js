@@ -1,4 +1,4 @@
-const fs = require("fs");
+﻿const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const electronModule = require("electron");
@@ -23,31 +23,76 @@ let agentService = null;
 let tray = null;
 let isQuitting = false;
 let closeChoiceInProgress = false;
-let appSettings = { closeBehavior: "ask" };
+let appSettings = { closeBehavior: "ask", language: "en" };
+
+const MAIN_I18N = {
+  en: {
+    trayOpenPanel: "Open Panel",
+    trayExit: "Exit",
+    trayTooltip: "4claw CLI",
+    closeTitle: "Exit 4claw CLI",
+    closeMessage: "How should closing this window be handled?",
+    closeDetail: "You can change default behavior in Settings.",
+    closeBtnExit: "Exit Completely",
+    closeBtnMinimize: "Minimize to Tray",
+    closeBtnCancel: "Cancel",
+    closeRemember: "Remember this choice"
+  },
+  "zh-CN": {
+    trayOpenPanel: "打开面板",
+    trayExit: "关闭退出",
+    trayTooltip: "4claw CLI",
+    closeTitle: "退出 4claw CLI",
+    closeMessage: "关闭窗口时如何处理？",
+    closeDetail: "可在“设置”页修改默认行为。",
+    closeBtnExit: "彻底退出",
+    closeBtnMinimize: "最小化运行",
+    closeBtnCancel: "取消",
+    closeRemember: "记住本次选择"
+  },
+  ru: {
+    trayOpenPanel: "Открыть панель",
+    trayExit: "Закрыть и выйти",
+    trayTooltip: "4claw CLI",
+    closeTitle: "Выход из 4claw CLI",
+    closeMessage: "Как обработать закрытие окна?",
+    closeDetail: "Поведение по умолчанию можно изменить в Настройках.",
+    closeBtnExit: "Полный выход",
+    closeBtnMinimize: "Свернуть в трей",
+    closeBtnCancel: "Отмена",
+    closeRemember: "Запомнить выбор"
+  }
+};
+function getMainText() {
+  return MAIN_I18N[appSettings.language] || MAIN_I18N.en;
+}
 
 function getSettingsPath() {
   return path.join(app.getPath("userData"), "runtime", "ui-settings.json");
 }
 
 function normalizeSettings(input) {
-  const allowed = new Set(["ask", "minimize", "exit"]);
+  const allowedCloseBehavior = new Set(["ask", "minimize", "exit"]);
+  const allowedLanguages = new Set(["en", "zh-CN", "ru"]);
   const closeBehavior = typeof input?.closeBehavior === "string" ? input.closeBehavior : "ask";
+  const language = typeof input?.language === "string" ? input.language : "en";
   return {
-    closeBehavior: allowed.has(closeBehavior) ? closeBehavior : "ask"
+    closeBehavior: allowedCloseBehavior.has(closeBehavior) ? closeBehavior : "ask",
+    language: allowedLanguages.has(language) ? language : "en"
   };
 }
 
 function loadSettings() {
   const filePath = getSettingsPath();
   if (!fs.existsSync(filePath)) {
-    appSettings = { closeBehavior: "ask" };
+    appSettings = { closeBehavior: "ask", language: "en" };
     return appSettings;
   }
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
     appSettings = normalizeSettings(raw);
   } catch {
-    appSettings = { closeBehavior: "ask" };
+    appSettings = { closeBehavior: "ask", language: "en" };
   }
   return appSettings;
 }
@@ -57,6 +102,26 @@ function saveSettings(patch) {
   const filePath = getSettingsPath();
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(appSettings, null, 2)}\n`, "utf8");
+  if (tray) {
+    tray.setToolTip(getMainText().trayTooltip);
+    const menu = Menu.buildFromTemplate([
+      {
+        label: getMainText().trayOpenPanel,
+        click: () => showMainWindow()
+      },
+      {
+        type: "separator"
+      },
+      {
+        label: getMainText().trayExit,
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+    tray.setContextMenu(menu);
+  }
   return appSettings;
 }
 
@@ -118,18 +183,18 @@ function ensureTray() {
 
   const trayImage = resolveImage(resolveTrayIconPath());
   tray = new Tray(trayImage);
-  tray.setToolTip("4claw CLI");
+  tray.setToolTip(getMainText().trayTooltip);
 
   const menu = Menu.buildFromTemplate([
     {
-      label: "\u6253\u5f00\u9762\u677f",
+      label: getMainText().trayOpenPanel,
       click: () => showMainWindow()
     },
     {
       type: "separator"
     },
     {
-      label: "\u5173\u95ed\u9000\u51fa",
+      label: getMainText().trayExit,
       click: () => {
         isQuitting = true;
         app.quit();
@@ -160,16 +225,17 @@ async function handleCloseByBehavior() {
     return;
   }
 
+  const text = getMainText();
   const result = await dialog.showMessageBox(mainWindow, {
     type: "question",
-    buttons: ["\u5f7b\u5e95\u9000\u51fa", "\u6700\u5c0f\u5316\u8fd0\u884c", "\u53d6\u6d88"],
+    buttons: [text.closeBtnExit, text.closeBtnMinimize, text.closeBtnCancel],
     defaultId: 1,
     cancelId: 2,
     noLink: true,
-    title: "\u9000\u51fa 4claw CLI",
-    message: "\u5173\u95ed\u7a97\u53e3\u65f6\u5982\u4f55\u5904\u7406\uff1f",
-    detail: "\u53ef\u5728\u201c\u8bbe\u7f6e\u201d\u9875\u4fee\u6539\u9ed8\u8ba4\u884c\u4e3a\u3002",
-    checkboxLabel: "\u8bb0\u4f4f\u672c\u6b21\u9009\u62e9",
+    title: text.closeTitle,
+    message: text.closeMessage,
+    detail: text.closeDetail,
+    checkboxLabel: text.closeRemember,
     checkboxChecked: false
   });
 

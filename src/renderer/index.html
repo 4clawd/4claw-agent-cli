@@ -1,5 +1,5 @@
-<!doctype html>
-<html lang="zh-CN">
+﻿<!doctype html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,7 +14,7 @@
           <img src="../../assets/logo.png" alt="4claw logo" class="brand-logo" />
           <div>
             <h1>4claw CLI</h1>
-            <p>Simple desktop shell for 4claw</p>
+            <p id="brandSubtitle">Simple desktop shell for 4claw</p>
           </div>
         </div>
         <div class="topbar-right no-drag">
@@ -36,7 +36,7 @@
       <main class="layout">
         <aside class="sidebar glass">
           <section class="panel-head">
-            <h2>Agent List</h2>
+            <h2 id="agentListTitle">Agent List</h2>
           </section>
           <section class="create-box">
             <button id="createAgentBtn" class="btn btn-primary">Create Agent (Wizard)</button>
@@ -59,11 +59,11 @@
           </div>
 
           <nav class="tabs glass">
-            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-            <button class="tab-btn" data-tab="config">Config</button>
-            <button class="tab-btn" data-tab="logs">Logs</button>
-            <button class="tab-btn" data-tab="backups">Backups</button>
-            <button class="tab-btn" data-tab="settings">Settings</button>
+            <button id="tabDashboardBtn" class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button id="tabConfigBtn" class="tab-btn" data-tab="config">Config</button>
+            <button id="tabLogsBtn" class="tab-btn" data-tab="logs">Logs</button>
+            <button id="tabBackupsBtn" class="tab-btn" data-tab="backups">Backups</button>
+            <button id="tabSettingsBtn" class="tab-btn" data-tab="settings">Settings</button>
           </nav>
 
           <section class="tab-body">
@@ -82,40 +82,40 @@
               </div>
 
               <div id="quickConfigPanel" class="config-subpane active">
-                <div class="quick-config-grid">
-                  <label class="quick-field">
-                    <span>Agent Name</span>
-                    <input id="quickAgentName" type="text" />
-                  </label>
-                  <label class="quick-field">
-                    <span>Model Alias</span>
-                    <input id="quickModelAlias" type="text" placeholder="e.g. gpt4" />
-                  </label>
-                  <label class="quick-field">
-                    <span>Model Name</span>
-                    <input id="quickModelName" type="text" placeholder="e.g. openai/gpt-5.2" />
-                  </label>
-                  <label class="quick-field">
-                    <span>API Base</span>
-                    <input id="quickApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
-                  </label>
-                  <label class="quick-field">
-                    <span>API Key</span>
-                    <input id="quickApiKey" type="text" />
-                  </label>
-                  <label class="quick-field quick-field-checkbox">
-                    <span>Enable Telegram</span>
-                    <input id="quickTelegramEnabled" type="checkbox" />
-                  </label>
-                  <label class="quick-field">
-                    <span>Telegram Bot Token</span>
-                    <input id="quickTelegramToken" type="text" />
-                  </label>
-                  <label class="quick-field">
-                    <span>Allowed User IDs (comma separated)</span>
-                    <input id="quickTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
-                  </label>
-                </div>
+              <div class="quick-config-grid">
+                <label class="quick-field">
+                  <span id="quickAgentNameLabel">Agent Name</span>
+                  <input id="quickAgentName" type="text" />
+                </label>
+                <label class="quick-field">
+                  <span id="quickModelAliasLabel">Model Alias</span>
+                  <input id="quickModelAlias" type="text" placeholder="e.g. gpt4" />
+                </label>
+                <label class="quick-field">
+                  <span id="quickModelNameLabel">Model Name</span>
+                  <input id="quickModelName" type="text" placeholder="e.g. openai/gpt-5.2" />
+                </label>
+                <label class="quick-field">
+                  <span id="quickApiBaseLabel">API Base</span>
+                  <input id="quickApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
+                </label>
+                <label class="quick-field">
+                  <span id="quickApiKeyLabel">API Key</span>
+                  <input id="quickApiKey" type="text" />
+                </label>
+                <label class="quick-field quick-field-checkbox">
+                  <span id="quickTelegramEnabledLabel">Enable Telegram</span>
+                  <input id="quickTelegramEnabled" type="checkbox" />
+                </label>
+                <label class="quick-field">
+                  <span id="quickTelegramTokenLabel">Telegram Bot Token</span>
+                  <input id="quickTelegramToken" type="text" />
+                </label>
+                <label class="quick-field">
+                  <span id="quickTelegramAllowFromLabel">Allowed User IDs (comma separated)</span>
+                  <input id="quickTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
+                </label>
+              </div>
                 <div class="pane-toolbar">
                   <button id="saveQuickConfigBtn" class="btn btn-primary">Save Quick Config</button>
                 </div>
@@ -147,23 +147,32 @@
 
             <article id="tab-settings" class="tab-pane glass">
               <div class="settings-panel">
-                <h3>Window Close Behavior</h3>
+                <h3 id="settingsCloseBehaviorTitle">Window Close Behavior</h3>
                 <label class="settings-option">
                   <input type="radio" name="closeBehavior" value="ask" checked />
-                  Ask every time
+                  <span id="closeBehaviorAskLabel">Ask every time</span>
                 </label>
                 <label class="settings-option">
                   <input type="radio" name="closeBehavior" value="minimize" />
-                  Minimize to tray
+                  <span id="closeBehaviorMinimizeLabel">Minimize to tray</span>
                 </label>
                 <label class="settings-option">
                   <input type="radio" name="closeBehavior" value="exit" />
-                  Exit directly
+                  <span id="closeBehaviorExitLabel">Exit directly</span>
+                </label>
+                <h3 id="settingsLanguageTitle">Language</h3>
+                <label class="settings-option" for="languageSelect">
+                  <span id="settingsLanguageLabel">UI Language</span>
+                  <select id="languageSelect">
+                    <option value="en">English</option>
+                    <option value="zh-CN">简体中文</option>
+                    <option value="ru">Русский</option>
+                  </select>
                 </label>
                 <div class="pane-toolbar">
                   <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
                 </div>
-                <p class="settings-hint">When set to Ask, close dialog includes a remember checkbox.</p>
+                <p id="settingsHintText" class="settings-hint">When set to Ask, close dialog includes a remember checkbox.</p>
               </div>
             </article>
           </section>
@@ -174,44 +183,44 @@
     <div id="createWizardModal" class="wizard-mask hidden">
       <div class="wizard-dialog glass">
         <div class="wizard-head">
-          <h3>Create Agent Wizard</h3>
+          <h3 id="wizardTitle">Create Agent Wizard</h3>
           <div id="wizardStepLabel" class="wizard-step-label">Step 1 / 2</div>
         </div>
 
         <div id="wizardStep1" class="wizard-step active">
           <label class="quick-field">
-            <span>Agent Name</span>
+            <span id="wizardAgentNameLabel">Agent Name</span>
             <input id="wizardAgentName" type="text" />
           </label>
           <label class="quick-field">
-            <span>Model Alias</span>
+            <span id="wizardModelAliasLabel">Model Alias</span>
             <input id="wizardModelAlias" type="text" value="gpt4" />
           </label>
           <label class="quick-field">
-            <span>Model Name</span>
+            <span id="wizardModelNameLabel">Model Name</span>
             <input id="wizardModelName" type="text" placeholder="e.g. openai/gpt-5.2" />
           </label>
           <label class="quick-field">
-            <span>API Base</span>
+            <span id="wizardApiBaseLabel">API Base</span>
             <input id="wizardApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
           </label>
           <label class="quick-field">
-            <span>API Key</span>
+            <span id="wizardApiKeyLabel">API Key</span>
             <input id="wizardApiKey" type="text" />
           </label>
         </div>
 
         <div id="wizardStep2" class="wizard-step">
           <label class="quick-field quick-field-checkbox">
-            <span>Enable Telegram</span>
+            <span id="wizardTelegramEnabledLabel">Enable Telegram</span>
             <input id="wizardTelegramEnabled" type="checkbox" checked />
           </label>
           <label class="quick-field">
-            <span>Telegram Bot Token</span>
+            <span id="wizardTelegramTokenLabel">Telegram Bot Token</span>
             <input id="wizardTelegramToken" type="text" />
           </label>
           <label class="quick-field">
-            <span>Allowed User IDs (comma separated)</span>
+            <span id="wizardTelegramAllowFromLabel">Allowed User IDs (comma separated)</span>
             <input id="wizardTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
           </label>
         </div>
@@ -229,3 +238,4 @@
     <script src="./app.js"></script>
   </body>
 </html>
+

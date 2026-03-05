@@ -11,7 +11,8 @@ const state = {
   logs: "",
   backups: [],
   settings: {
-    closeBehavior: "ask"
+    closeBehavior: "ask",
+    language: "en"
   }
 };
 
@@ -58,6 +59,7 @@ const els = {
   createBackupBtn: document.getElementById("createBackupBtn"),
   exportBackupBtn: document.getElementById("exportBackupBtn"),
   backupList: document.getElementById("backupList"),
+  languageSelect: document.getElementById("languageSelect"),
   saveSettingsBtn: document.getElementById("saveSettingsBtn"),
   toastHost: document.getElementById("toastHost"),
   createWizardModal: document.getElementById("createWizardModal"),
@@ -86,6 +88,483 @@ const wizardState = {
 
 let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
+
+const I18N = {
+  en: {
+    brand_subtitle: "Simple desktop shell for 4claw",
+    win_minimize: "Minimize",
+    win_close: "Close",
+    agent_list: "Agent List",
+    create_agent_wizard: "Create Agent (Wizard)",
+    import_backup: "Import Backup",
+    refresh: "Refresh",
+    no_agent_selected: "No Agent Selected",
+    rename: "Rename",
+    open_folder: "Open Folder",
+    delete: "Delete",
+    tab_dashboard: "Dashboard",
+    tab_config: "Config",
+    tab_logs: "Logs",
+    tab_backups: "Backups",
+    tab_settings: "Settings",
+    import_config: "Import Config",
+    export_config: "Export Config",
+    reload: "Reload",
+    quick_config: "Quick Config",
+    full_config: "Full Config",
+    agent_name: "Agent Name",
+    model_alias: "Model Alias",
+    model_name: "Model Name",
+    api_base: "API Base",
+    api_key: "API Key",
+    enable_telegram: "Enable Telegram",
+    telegram_token: "Telegram Bot Token",
+    allow_user_ids: "Allowed User IDs (comma separated)",
+    placeholder_model_alias: "e.g. gpt4",
+    placeholder_model_name: "e.g. openai/gpt-5.2",
+    placeholder_api_base: "e.g. https://api.openai.com/v1",
+    placeholder_allow_ids: "e.g. 123456789, 987654321",
+    save_quick_config: "Save Quick Config",
+    save_full_config: "Save Full Config",
+    refresh_logs: "Refresh Logs",
+    clear_logs: "Clear Logs",
+    create_backup: "Create Backup",
+    export_backup: "Export Backup",
+    settings_close_behavior: "Window Close Behavior",
+    close_ask: "Ask every time",
+    close_minimize: "Minimize to tray",
+    close_exit: "Exit directly",
+    settings_language: "Language",
+    settings_ui_language: "UI Language",
+    save_settings: "Save Settings",
+    settings_hint: "When set to Ask, close dialog includes a remember checkbox.",
+    language_en: "English",
+    language_zh: "Simplified Chinese",
+    language_ru: "Russian",
+    wizard_title: "Create Agent Wizard",
+    wizard_cancel: "Cancel",
+    wizard_back: "Back",
+    wizard_next: "Next",
+    wizard_create_start: "Create & Start",
+    wizard_step: "Step {step} / 2",
+    empty_no_agents: "No agents yet. Click create to get started.",
+    empty_select_agent_controls: "Select an agent to view status and controls.",
+    empty_no_config: "No config available.",
+    empty_config_load_failed: "Failed to load config.json.",
+    empty_select_agent_edit: "Select an agent to edit config.json.",
+    empty_select_agent_backups: "Select an agent to view backups.",
+    empty_no_backups: "No backups yet.",
+    status_running: "Running",
+    status_stopped: "Stopped",
+    label_id: "ID",
+    label_port: "Port",
+    label_last_start: "Last Start",
+    action_stop: "Stop",
+    action_start: "Start",
+    action_backup: "Backup",
+    stat_status: "Status",
+    stat_pid: "PID",
+    stat_gateway_port: "Gateway Port",
+    stat_created_at: "Created At",
+    stat_updated_at: "Updated At",
+    dash_stop_agent: "Stop Agent",
+    dash_start_agent: "Start Agent",
+    dash_create_backup: "Create Backup",
+    dash_export_backup: "Export Backup",
+    dash_view_logs: "View Logs",
+    dash_open_config: "Open Config",
+    toast_select_agent: "Please select an agent first.",
+    toast_settings_saved: "Settings saved.",
+    toast_backup_created: "Backup created.",
+    toast_quick_saved: "Quick config saved.",
+    toast_full_saved: "Full config saved.",
+    toast_config_imported: "Config imported.",
+    toast_agent_created_started: "Agent created and started.",
+    toast_backup_restored: "Backup restored.",
+    toast_config_exported: "Config exported: {path}",
+    toast_backup_exported: "Backup exported: {path}",
+    backup_time: "Time",
+    backup_size: "Size",
+    backup_restore_new: "Restore As New Agent",
+    prompt_optional_agent_name: "Optional: new agent name",
+    prompt_optional_imported_name: "Optional: agent name after import",
+    prompt_new_agent_name: "New agent name",
+    confirm_delete_agent: "Delete agent \"{name}\"? This removes config/workspace/logs.",
+    confirm_clear_logs: "Clear logs for current agent?",
+    json_add_field: "Add Field",
+    json_delete: "Delete",
+    json_empty_array: "Empty array, use + buttons to add items.",
+    json_empty_object: "Empty object, click Add Field.",
+    prompt_new_field_name: "New field name",
+    toast_field_exists: "Field already exists.",
+    wizard_req_agent_name: "Agent name is required.",
+    wizard_req_model_alias: "Model alias is required.",
+    wizard_req_model_name: "Model name is required.",
+    wizard_req_api_base: "API base is required.",
+    wizard_req_api_key: "API key is required.",
+    wizard_req_tg_token: "Telegram bot token is required when Telegram is enabled.",
+    wizard_req_tg_allow: "At least one allowed Telegram user ID is required."
+  },
+  "zh-CN": {
+    brand_subtitle: "简易便捷的桌面端 4claw CLI",
+    win_minimize: "最小化",
+    win_close: "关闭",
+    agent_list: "Agent 列表",
+    create_agent_wizard: "创建 Agent（向导）",
+    import_backup: "导入备份",
+    refresh: "刷新",
+    no_agent_selected: "未选择 Agent",
+    rename: "重命名",
+    open_folder: "打开目录",
+    delete: "删除",
+    tab_dashboard: "总览",
+    tab_config: "配置",
+    tab_logs: "日志",
+    tab_backups: "备份",
+    tab_settings: "设置",
+    import_config: "导入配置",
+    export_config: "导出配置",
+    reload: "重载",
+    quick_config: "快速配置",
+    full_config: "完整配置",
+    agent_name: "Agent 名称",
+    model_alias: "模型别名",
+    model_name: "模型名称",
+    api_base: "API 地址",
+    api_key: "API Key",
+    enable_telegram: "启用 Telegram",
+    telegram_token: "Telegram Bot Token",
+    allow_user_ids: "允许访问用户 ID（逗号分隔）",
+    placeholder_model_alias: "例如 gpt4",
+    placeholder_model_name: "例如 openai/gpt-5.2",
+    placeholder_api_base: "例如 https://api.openai.com/v1",
+    placeholder_allow_ids: "例如 123456789, 987654321",
+    save_quick_config: "保存快速配置",
+    save_full_config: "保存完整配置",
+    refresh_logs: "刷新日志",
+    clear_logs: "清空日志",
+    create_backup: "创建备份",
+    export_backup: "导出备份",
+    settings_close_behavior: "关闭窗口行为",
+    close_ask: "每次询问",
+    close_minimize: "最小化到托盘",
+    close_exit: "直接退出",
+    settings_language: "语言",
+    settings_ui_language: "界面语言",
+    save_settings: "保存设置",
+    settings_hint: "当设置为“每次询问”时，关闭弹窗会显示“是否记住”选项。",
+    language_en: "English",
+    language_zh: "简体中文",
+    language_ru: "Русский",
+    wizard_title: "创建 Agent 向导",
+    wizard_cancel: "取消",
+    wizard_back: "上一步",
+    wizard_next: "下一步",
+    wizard_create_start: "创建并启动",
+    wizard_step: "第 {step} / 2 步",
+    empty_no_agents: "暂无 Agent，点击“创建”开始。",
+    empty_select_agent_controls: "请选择一个 Agent 查看状态和控制项。",
+    empty_no_config: "暂无配置可显示。",
+    empty_config_load_failed: "读取 config.json 失败。",
+    empty_select_agent_edit: "请选择一个 Agent 后编辑配置。",
+    empty_select_agent_backups: "请选择一个 Agent 查看备份。",
+    empty_no_backups: "暂无备份。",
+    status_running: "运行中",
+    status_stopped: "已停止",
+    label_id: "ID",
+    label_port: "端口",
+    label_last_start: "最后启动",
+    action_stop: "停止",
+    action_start: "启动",
+    action_backup: "备份",
+    stat_status: "运行状态",
+    stat_pid: "进程 PID",
+    stat_gateway_port: "网关端口",
+    stat_created_at: "创建时间",
+    stat_updated_at: "更新时间",
+    dash_stop_agent: "停止 Agent",
+    dash_start_agent: "启动 Agent",
+    dash_create_backup: "创建备份",
+    dash_export_backup: "导出备份",
+    dash_view_logs: "查看日志",
+    dash_open_config: "打开配置",
+    toast_select_agent: "请先选择一个 Agent。",
+    toast_settings_saved: "设置已保存。",
+    toast_backup_created: "备份已创建。",
+    toast_quick_saved: "快速配置已保存。",
+    toast_full_saved: "完整配置已保存。",
+    toast_config_imported: "配置导入完成。",
+    toast_agent_created_started: "Agent 已创建并启动。",
+    toast_backup_restored: "备份恢复成功。",
+    toast_config_exported: "配置已导出：{path}",
+    toast_backup_exported: "备份已导出：{path}",
+    backup_time: "时间",
+    backup_size: "大小",
+    backup_restore_new: "恢复为新 Agent",
+    prompt_optional_agent_name: "可选：新 Agent 名称",
+    prompt_optional_imported_name: "可选：导入后的 Agent 名称",
+    prompt_new_agent_name: "新的 Agent 名称",
+    confirm_delete_agent: "确认删除 Agent \"{name}\"？将删除 config/workspace/logs。",
+    confirm_clear_logs: "确认清空当前 Agent 日志？",
+    json_add_field: "新增字段",
+    json_delete: "删除",
+    json_empty_array: "数组为空，可用 + 按钮添加。",
+    json_empty_object: "对象为空，点击“新增字段”。",
+    prompt_new_field_name: "请输入字段名",
+    toast_field_exists: "字段已存在。",
+    wizard_req_agent_name: "Agent 名称不能为空。",
+    wizard_req_model_alias: "模型别名不能为空。",
+    wizard_req_model_name: "模型名称不能为空。",
+    wizard_req_api_base: "API 地址不能为空。",
+    wizard_req_api_key: "API Key 不能为空。",
+    wizard_req_tg_token: "启用 Telegram 时，Bot Token 不能为空。",
+    wizard_req_tg_allow: "请至少填写一个允许访问的 Telegram 用户 ID。"
+  },
+  ru: {
+    brand_subtitle: "Простой настольный клиент для 4claw CLI",
+    win_minimize: "Свернуть",
+    win_close: "Закрыть",
+    agent_list: "Список агентов",
+    create_agent_wizard: "Создать агента (мастер)",
+    import_backup: "Импорт бэкапа",
+    refresh: "Обновить",
+    no_agent_selected: "Агент не выбран",
+    rename: "Переименовать",
+    open_folder: "Открыть папку",
+    delete: "Удалить",
+    tab_dashboard: "Панель",
+    tab_config: "Конфиг",
+    tab_logs: "Логи",
+    tab_backups: "Бэкапы",
+    tab_settings: "Настройки",
+    import_config: "Импорт конфига",
+    export_config: "Экспорт конфига",
+    reload: "Перезагрузить",
+    quick_config: "Быстрый конфиг",
+    full_config: "Полный конфиг",
+    agent_name: "Имя агента",
+    model_alias: "Псевдоним модели",
+    model_name: "Имя модели",
+    api_base: "API Base",
+    api_key: "API Key",
+    enable_telegram: "Включить Telegram",
+    telegram_token: "Токен Telegram бота",
+    allow_user_ids: "Разрешенные ID пользователей (через запятую)",
+    placeholder_model_alias: "например gpt4",
+    placeholder_model_name: "например openai/gpt-5.2",
+    placeholder_api_base: "например https://api.openai.com/v1",
+    placeholder_allow_ids: "например 123456789, 987654321",
+    save_quick_config: "Сохранить быстрый конфиг",
+    save_full_config: "Сохранить полный конфиг",
+    refresh_logs: "Обновить логи",
+    clear_logs: "Очистить логи",
+    create_backup: "Создать бэкап",
+    export_backup: "Экспорт бэкапа",
+    settings_close_behavior: "Поведение при закрытии окна",
+    close_ask: "Спрашивать каждый раз",
+    close_minimize: "Сворачивать в трей",
+    close_exit: "Выходить сразу",
+    settings_language: "Язык",
+    settings_ui_language: "Язык интерфейса",
+    save_settings: "Сохранить настройки",
+    settings_hint: "В режиме «Спрашивать» диалог закрытия содержит опцию «Запомнить».",
+    language_en: "English",
+    language_zh: "简体中文",
+    language_ru: "Русский",
+    wizard_title: "Мастер создания агента",
+    wizard_cancel: "Отмена",
+    wizard_back: "Назад",
+    wizard_next: "Далее",
+    wizard_create_start: "Создать и запустить",
+    wizard_step: "Шаг {step} / 2",
+    empty_no_agents: "Агентов пока нет. Нажмите «Создать».",
+    empty_select_agent_controls: "Выберите агента для просмотра состояния и управления.",
+    empty_no_config: "Нет доступного конфига.",
+    empty_config_load_failed: "Не удалось загрузить config.json.",
+    empty_select_agent_edit: "Выберите агента для редактирования config.json.",
+    empty_select_agent_backups: "Выберите агента для просмотра бэкапов.",
+    empty_no_backups: "Бэкапов пока нет.",
+    status_running: "Запущен",
+    status_stopped: "Остановлен",
+    label_id: "ID",
+    label_port: "Порт",
+    label_last_start: "Последний запуск",
+    action_stop: "Стоп",
+    action_start: "Старт",
+    action_backup: "Бэкап",
+    stat_status: "Статус",
+    stat_pid: "PID",
+    stat_gateway_port: "Порт Gateway",
+    stat_created_at: "Создан",
+    stat_updated_at: "Обновлен",
+    dash_stop_agent: "Остановить агента",
+    dash_start_agent: "Запустить агента",
+    dash_create_backup: "Создать бэкап",
+    dash_export_backup: "Экспорт бэкапа",
+    dash_view_logs: "Открыть логи",
+    dash_open_config: "Открыть конфиг",
+    toast_select_agent: "Сначала выберите агента.",
+    toast_settings_saved: "Настройки сохранены.",
+    toast_backup_created: "Бэкап создан.",
+    toast_quick_saved: "Быстрый конфиг сохранен.",
+    toast_full_saved: "Полный конфиг сохранен.",
+    toast_config_imported: "Конфиг импортирован.",
+    toast_agent_created_started: "Агент создан и запущен.",
+    toast_backup_restored: "Бэкап восстановлен.",
+    toast_config_exported: "Конфиг экспортирован: {path}",
+    toast_backup_exported: "Бэкап экспортирован: {path}",
+    backup_time: "Время",
+    backup_size: "Размер",
+    backup_restore_new: "Восстановить как нового агента",
+    prompt_optional_agent_name: "Опционально: имя нового агента",
+    prompt_optional_imported_name: "Опционально: имя после импорта",
+    prompt_new_agent_name: "Новое имя агента",
+    confirm_delete_agent: "Удалить агента \"{name}\"? Будут удалены config/workspace/logs.",
+    confirm_clear_logs: "Очистить логи текущего агента?",
+    json_add_field: "Добавить поле",
+    json_delete: "Удалить",
+    json_empty_array: "Массив пуст. Используйте кнопки + для добавления.",
+    json_empty_object: "Объект пуст. Нажмите «Добавить поле».",
+    prompt_new_field_name: "Введите имя поля",
+    toast_field_exists: "Поле уже существует.",
+    wizard_req_agent_name: "Требуется имя агента.",
+    wizard_req_model_alias: "Требуется псевдоним модели.",
+    wizard_req_model_name: "Требуется имя модели.",
+    wizard_req_api_base: "Требуется API Base.",
+    wizard_req_api_key: "Требуется API Key.",
+    wizard_req_tg_token: "При включенном Telegram требуется токен бота.",
+    wizard_req_tg_allow: "Укажите хотя бы один разрешенный Telegram ID."
+  }
+};
+
+function getLocale() {
+  const lang = state.settings?.language;
+  return I18N[lang] ? lang : "en";
+}
+
+function t(key, vars = {}) {
+  const lang = getLocale();
+  const dict = I18N[lang] || I18N.en;
+  const fallback = I18N.en[key] || key;
+  let text = dict[key] || fallback;
+  for (const [k, v] of Object.entries(vars)) {
+    text = text.replaceAll(`{${k}}`, String(v));
+  }
+  return text;
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = value;
+  }
+}
+
+function applyLocale() {
+  const locale = getLocale();
+  document.documentElement.lang = locale === "zh-CN" ? "zh-CN" : locale;
+
+  setText("brandSubtitle", t("brand_subtitle"));
+  setText("agentListTitle", t("agent_list"));
+  setText("createAgentBtn", t("create_agent_wizard"));
+  setText("importBackupBtn", t("import_backup"));
+  setText("refreshAgentsBtn", t("refresh"));
+  setText("renameAgentBtn", t("rename"));
+  setText("openAgentFolderBtn", t("open_folder"));
+  setText("deleteAgentBtn", t("delete"));
+  setText("tabDashboardBtn", t("tab_dashboard"));
+  setText("tabConfigBtn", t("tab_config"));
+  setText("tabLogsBtn", t("tab_logs"));
+  setText("tabBackupsBtn", t("tab_backups"));
+  setText("tabSettingsBtn", t("tab_settings"));
+  setText("importConfigBtn", t("import_config"));
+  setText("exportConfigBtn", t("export_config"));
+  setText("reloadConfigBtn", t("reload"));
+  setText("quickConfigTabBtn", t("quick_config"));
+  setText("fullConfigTabBtn", t("full_config"));
+  setText("quickAgentNameLabel", t("agent_name"));
+  setText("quickModelAliasLabel", t("model_alias"));
+  setText("quickModelNameLabel", t("model_name"));
+  setText("quickApiBaseLabel", t("api_base"));
+  setText("quickApiKeyLabel", t("api_key"));
+  setText("quickTelegramEnabledLabel", t("enable_telegram"));
+  setText("quickTelegramTokenLabel", t("telegram_token"));
+  setText("quickTelegramAllowFromLabel", t("allow_user_ids"));
+  setText("saveQuickConfigBtn", t("save_quick_config"));
+  setText("saveConfigBtn", t("save_full_config"));
+  setText("refreshLogsBtn", t("refresh_logs"));
+  setText("clearLogsBtn", t("clear_logs"));
+  setText("createBackupBtn", t("create_backup"));
+  setText("exportBackupBtn", t("export_backup"));
+  setText("settingsCloseBehaviorTitle", t("settings_close_behavior"));
+  setText("closeBehaviorAskLabel", t("close_ask"));
+  setText("closeBehaviorMinimizeLabel", t("close_minimize"));
+  setText("closeBehaviorExitLabel", t("close_exit"));
+  setText("settingsLanguageTitle", t("settings_language"));
+  setText("settingsLanguageLabel", t("settings_ui_language"));
+  setText("saveSettingsBtn", t("save_settings"));
+  setText("settingsHintText", t("settings_hint"));
+  setText("wizardTitle", t("wizard_title"));
+  setText("wizardAgentNameLabel", t("agent_name"));
+  setText("wizardModelAliasLabel", t("model_alias"));
+  setText("wizardModelNameLabel", t("model_name"));
+  setText("wizardApiBaseLabel", t("api_base"));
+  setText("wizardApiKeyLabel", t("api_key"));
+  setText("wizardTelegramEnabledLabel", t("enable_telegram"));
+  setText("wizardTelegramTokenLabel", t("telegram_token"));
+  setText("wizardTelegramAllowFromLabel", t("allow_user_ids"));
+  setText("wizardCancelBtn", t("wizard_cancel"));
+  setText("wizardPrevBtn", t("wizard_back"));
+  setText("wizardNextBtn", t("wizard_next"));
+  setText("wizardSubmitBtn", t("wizard_create_start"));
+
+  if (els.quickModelAlias) {
+    els.quickModelAlias.placeholder = t("placeholder_model_alias");
+  }
+  if (els.quickModelName) {
+    els.quickModelName.placeholder = t("placeholder_model_name");
+  }
+  if (els.quickApiBase) {
+    els.quickApiBase.placeholder = t("placeholder_api_base");
+  }
+  if (els.quickTelegramAllowFrom) {
+    els.quickTelegramAllowFrom.placeholder = t("placeholder_allow_ids");
+  }
+  if (els.wizardModelName) {
+    els.wizardModelName.placeholder = t("placeholder_model_name");
+  }
+  if (els.wizardApiBase) {
+    els.wizardApiBase.placeholder = t("placeholder_api_base");
+  }
+  if (els.wizardTelegramAllowFrom) {
+    els.wizardTelegramAllowFrom.placeholder = t("placeholder_allow_ids");
+  }
+
+  els.minimizeWindowBtn.title = t("win_minimize");
+  els.closeWindowBtn.title = t("win_close");
+
+  const langOptionEN = els.languageSelect?.querySelector('option[value="en"]');
+  const langOptionZH = els.languageSelect?.querySelector('option[value="zh-CN"]');
+  const langOptionRU = els.languageSelect?.querySelector('option[value="ru"]');
+  if (langOptionEN) {
+    langOptionEN.textContent = t("language_en");
+  }
+  if (langOptionZH) {
+    langOptionZH.textContent = t("language_zh");
+  }
+  if (langOptionRU) {
+    langOptionRU.textContent = t("language_ru");
+  }
+
+  renderSelectedTitle();
+  renderAgentList();
+  renderDashboard();
+  renderConfigEditor();
+  renderBackups();
+  if (wizardState.open) {
+    setWizardStep(wizardState.step);
+  }
+}
 
 function showToast(message, type = "info") {
   if (!els.toastHost) {
@@ -171,7 +650,7 @@ function getAtPath(path) {
 function ensureSelectedAgent() {
   const selected = getSelectedAgent();
   if (!selected) {
-    showInfo("Please select an agent first.");
+    showInfo(t("toast_select_agent"));
     return null;
   }
   return selected;
@@ -183,6 +662,9 @@ function renderSettings() {
   for (const radio of radios) {
     radio.checked = radio.value === value;
   }
+  if (els.languageSelect) {
+    els.languageSelect.value = state.settings?.language || "en";
+  }
 }
 
 async function loadSettings() {
@@ -190,23 +672,28 @@ async function loadSettings() {
     const payload = await api.getSettings();
     if (payload && typeof payload === "object") {
       state.settings = {
-        closeBehavior: payload.closeBehavior || "ask"
+        closeBehavior: payload.closeBehavior || "ask",
+        language: payload.language || "en"
       };
     }
   } catch {}
   renderSettings();
+  applyLocale();
 }
 
 async function saveSettingsAction() {
   const checked = document.querySelector('input[name="closeBehavior"]:checked');
   const closeBehavior = checked ? checked.value : "ask";
+  const language = els.languageSelect?.value || "en";
   try {
-    const saved = await api.saveSettings({ closeBehavior });
+    const saved = await api.saveSettings({ closeBehavior, language });
     state.settings = {
-      closeBehavior: saved?.closeBehavior || "ask"
+      closeBehavior: saved?.closeBehavior || "ask",
+      language: saved?.language || "en"
     };
     renderSettings();
-    showInfo("Settings saved.");
+    applyLocale();
+    showInfo(t("toast_settings_saved"));
   } catch (error) {
     showError(error);
   }
@@ -246,7 +733,7 @@ function renderAgentList() {
   if (state.agents.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "No agents yet. Click create to get started.";
+    empty.textContent = t("empty_no_agents");
     els.agentList.appendChild(empty);
     return;
   }
@@ -265,7 +752,7 @@ function renderAgentList() {
     name.textContent = agent.meta.name || agent.id;
     const badge = document.createElement("div");
     badge.className = `status-badge ${agent.status.running ? "status-running" : "status-stopped"}`;
-    badge.textContent = agent.status.running ? "Running" : "Stopped";
+    badge.textContent = agent.status.running ? t("status_running") : t("status_stopped");
     top.appendChild(name);
     top.appendChild(badge);
     card.appendChild(top);
@@ -273,9 +760,9 @@ function renderAgentList() {
     const meta = document.createElement("div");
     meta.className = "agent-meta";
     meta.innerHTML = `
-      <div>ID: ${agent.id}</div>
-      <div>Port: ${(agent.config && agent.config.gateway && agent.config.gateway.port) || "-"}</div>
-      <div>Last Start: ${fmtDate(agent.meta.lastStartedAt)}</div>
+      <div>${t("label_id")}: ${agent.id}</div>
+      <div>${t("label_port")}: ${(agent.config && agent.config.gateway && agent.config.gateway.port) || "-"}</div>
+      <div>${t("label_last_start")}: ${fmtDate(agent.meta.lastStartedAt)}</div>
     `;
     card.appendChild(meta);
 
@@ -284,7 +771,7 @@ function renderAgentList() {
 
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "btn btn-xs";
-    toggleBtn.textContent = agent.status.running ? "Stop" : "Start";
+    toggleBtn.textContent = agent.status.running ? t("action_stop") : t("action_start");
     toggleBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
       try {
@@ -301,12 +788,12 @@ function renderAgentList() {
 
     const backupBtn = document.createElement("button");
     backupBtn.className = "btn btn-xs";
-    backupBtn.textContent = "Backup";
+    backupBtn.textContent = t("action_backup");
     backupBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
       try {
         await api.createBackup(agent.id);
-        showInfo("Backup created.");
+        showInfo(t("toast_backup_created"));
         if (agent.id === state.selectedAgentId) {
           await refreshBackups();
         }
@@ -324,14 +811,14 @@ function renderAgentList() {
 
 function renderSelectedTitle() {
   const selected = getSelectedAgent();
-  els.selectedAgentTitle.textContent = selected ? `${selected.meta.name || selected.id} (${selected.id})` : "No Agent Selected";
+  els.selectedAgentTitle.textContent = selected ? `${selected.meta.name || selected.id} (${selected.id})` : t("no_agent_selected");
 }
 
 function renderDashboard() {
   const pane = els.panes.dashboard;
   const selected = getSelectedAgent();
   if (!selected) {
-    pane.innerHTML = '<div class="empty-state">Select an agent to view status and controls.</div>';
+    pane.innerHTML = `<div class="empty-state">${t("empty_select_agent_controls")}</div>`;
     return;
   }
 
@@ -339,36 +826,36 @@ function renderDashboard() {
   pane.innerHTML = `
     <div class="dashboard-grid">
       <div class="stat-card">
-        <div class="stat-title">Status</div>
-        <div class="stat-value">${selected.status.running ? "Running" : "Stopped"}</div>
+        <div class="stat-title">${t("stat_status")}</div>
+        <div class="stat-value">${selected.status.running ? t("status_running") : t("status_stopped")}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">PID</div>
+        <div class="stat-title">${t("stat_pid")}</div>
         <div class="stat-value">${selected.status.pid || "-"}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">Gateway Port</div>
+        <div class="stat-title">${t("stat_gateway_port")}</div>
         <div class="stat-value">${port}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">Created At</div>
+        <div class="stat-title">${t("stat_created_at")}</div>
         <div class="stat-value">${fmtDate(selected.meta.createdAt)}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">Updated At</div>
+        <div class="stat-title">${t("stat_updated_at")}</div>
         <div class="stat-value">${fmtDate(selected.meta.updatedAt)}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-title">Last Start</div>
+        <div class="stat-title">${t("label_last_start")}</div>
         <div class="stat-value">${fmtDate(selected.meta.lastStartedAt)}</div>
       </div>
     </div>
     <div class="dashboard-actions">
-      <button class="btn btn-primary" id="dashToggleBtn">${selected.status.running ? "Stop Agent" : "Start Agent"}</button>
-      <button class="btn btn-soft" id="dashBackupBtn">Create Backup</button>
-      <button class="btn btn-soft" id="dashExportBtn">Export Backup</button>
-      <button class="btn btn-soft" id="dashLogsBtn">View Logs</button>
-      <button class="btn btn-soft" id="dashConfigBtn">Open Config</button>
+      <button class="btn btn-primary" id="dashToggleBtn">${selected.status.running ? t("dash_stop_agent") : t("dash_start_agent")}</button>
+      <button class="btn btn-soft" id="dashBackupBtn">${t("dash_create_backup")}</button>
+      <button class="btn btn-soft" id="dashExportBtn">${t("dash_export_backup")}</button>
+      <button class="btn btn-soft" id="dashLogsBtn">${t("dash_view_logs")}</button>
+      <button class="btn btn-soft" id="dashConfigBtn">${t("dash_open_config")}</button>
     </div>
   `;
 
@@ -388,7 +875,7 @@ function renderDashboard() {
   document.getElementById("dashBackupBtn").addEventListener("click", async () => {
     try {
       await api.createBackup(selected.id);
-      showInfo("Backup created.");
+      showInfo(t("toast_backup_created"));
       await refreshBackups();
     } catch (error) {
       showError(error);
@@ -594,7 +1081,7 @@ async function saveQuickConfig() {
 
     await refreshAgents(true);
     await selectAgent(selected.id);
-    showInfo("Quick config saved.");
+    showInfo(t("toast_quick_saved"));
   } catch (error) {
     showError(error);
   }
@@ -606,7 +1093,7 @@ async function loadConfig() {
     state.configDraft = null;
     state.configOriginal = null;
     renderQuickConfig();
-    els.configEditor.innerHTML = '<div class="empty-state">No config available.</div>';
+    els.configEditor.innerHTML = `<div class="empty-state">${t("empty_no_config")}</div>`;
     return;
   }
 
@@ -619,7 +1106,7 @@ async function loadConfig() {
   } catch (error) {
     showError(error);
     renderQuickConfig();
-    els.configEditor.innerHTML = '<div class="empty-state">Failed to load config.json.</div>';
+    els.configEditor.innerHTML = `<div class="empty-state">${t("empty_config_load_failed")}</div>`;
   }
 }
 
@@ -631,7 +1118,7 @@ async function saveConfig() {
   try {
     await api.saveConfig(selected.id, state.configDraft);
     state.configOriginal = safeClone(state.configDraft);
-    showInfo("Full config saved.");
+    showInfo(t("toast_full_saved"));
     await refreshAgents(true);
   } catch (error) {
     showError(error);
@@ -686,7 +1173,7 @@ function removeAtPath(path) {
 }
 
 function addObjectField(path) {
-  const key = window.prompt("New field name");
+  const key = window.prompt(t("prompt_new_field_name"));
   if (!key) {
     return;
   }
@@ -695,7 +1182,7 @@ function addObjectField(path) {
     target = target[seg];
   }
   if (Object.prototype.hasOwnProperty.call(target, key)) {
-    showInfo("Field already exists.");
+    showInfo(t("toast_field_exists"));
     return;
   }
   target[key] = "";
@@ -840,7 +1327,7 @@ function createNodeEditor(value, path, title) {
   if (valueType === "object") {
     const addBtn = document.createElement("button");
     addBtn.className = "btn btn-xs";
-    addBtn.textContent = "Add Field";
+    addBtn.textContent = t("json_add_field");
     addBtn.addEventListener("click", () => addObjectField(path));
     headerActions.appendChild(addBtn);
   } else {
@@ -879,7 +1366,7 @@ function createNodeEditor(value, path, title) {
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn btn-xs json-remove-btn";
-    removeBtn.textContent = "Delete";
+    removeBtn.textContent = t("json_delete");
     removeBtn.addEventListener("click", () => removeAtPath(childPath));
 
     row.appendChild(keyEl);
@@ -891,7 +1378,7 @@ function createNodeEditor(value, path, title) {
   if (entries.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = valueType === "array" ? "Empty array, use + buttons to add items." : "Empty object, click Add Field.";
+    empty.textContent = valueType === "array" ? t("json_empty_array") : t("json_empty_object");
     children.appendChild(empty);
   }
 
@@ -901,7 +1388,7 @@ function createNodeEditor(value, path, title) {
 
 function renderConfigEditor() {
   if (!state.configDraft) {
-    els.configEditor.innerHTML = '<div class="empty-state">Select an agent to edit config.json.</div>';
+    els.configEditor.innerHTML = `<div class="empty-state">${t("empty_select_agent_edit")}</div>`;
     return;
   }
   els.configEditor.innerHTML = "";
@@ -936,7 +1423,7 @@ async function refreshLogs() {
 async function refreshBackups() {
   const selected = getSelectedAgent();
   if (!selected) {
-    els.backupList.innerHTML = '<div class="empty-state">Select an agent to view backups.</div>';
+    els.backupList.innerHTML = `<div class="empty-state">${t("empty_select_agent_backups")}</div>`;
     return;
   }
   try {
@@ -950,7 +1437,7 @@ async function refreshBackups() {
 function renderBackups() {
   els.backupList.innerHTML = "";
   if (!state.backups.length) {
-    els.backupList.innerHTML = '<div class="empty-state">No backups yet.</div>';
+    els.backupList.innerHTML = `<div class="empty-state">${t("empty_no_backups")}</div>`;
     return;
   }
 
@@ -961,24 +1448,24 @@ function renderBackups() {
     main.className = "backup-main";
     main.innerHTML = `
       <div class="backup-name">${item.fileName}</div>
-      <div class="backup-meta">Time: ${fmtDate(item.createdAt)}</div>
-      <div class="backup-meta">Size: ${bytesToText(item.size)}</div>
+      <div class="backup-meta">${t("backup_time")}: ${fmtDate(item.createdAt)}</div>
+      <div class="backup-meta">${t("backup_size")}: ${bytesToText(item.size)}</div>
     `;
 
     const actions = document.createElement("div");
     actions.className = "json-actions-inline";
     const restoreBtn = document.createElement("button");
     restoreBtn.className = "btn btn-xs";
-    restoreBtn.textContent = "Restore As New Agent";
+    restoreBtn.textContent = t("backup_restore_new");
     restoreBtn.addEventListener("click", async () => {
-      const name = window.prompt("Optional: new agent name", "");
+      const name = window.prompt(t("prompt_optional_agent_name"), "");
       try {
         const imported = await api.restoreBackup(item.fileName, name || "");
         if (imported && imported.id) {
           state.selectedAgentId = imported.id;
           await refreshAgents(true);
           await selectAgent(imported.id);
-          showInfo("Backup restored.");
+          showInfo(t("toast_backup_restored"));
         }
       } catch (error) {
         showError(error);
@@ -994,7 +1481,7 @@ function setWizardStep(step) {
   wizardState.step = step === 2 ? 2 : 1;
   els.wizardStep1.classList.toggle("active", wizardState.step === 1);
   els.wizardStep2.classList.toggle("active", wizardState.step === 2);
-  els.wizardStepLabel.textContent = `Step ${wizardState.step} / 2`;
+  els.wizardStepLabel.textContent = t("wizard_step", { step: wizardState.step });
   els.wizardPrevBtn.style.display = wizardState.step === 1 ? "none" : "inline-block";
   els.wizardNextBtn.style.display = wizardState.step === 1 ? "inline-block" : "none";
   els.wizardSubmitBtn.style.display = wizardState.step === 2 ? "inline-block" : "none";
@@ -1053,27 +1540,27 @@ function validateWizardStep(step) {
 
   if (step === 1) {
     if (!data.agentName) {
-      showInfo("Agent name is required.");
+      showInfo(t("wizard_req_agent_name"));
       els.wizardAgentName.focus();
       return false;
     }
     if (!data.modelAlias) {
-      showInfo("Model alias is required.");
+      showInfo(t("wizard_req_model_alias"));
       els.wizardModelAlias.focus();
       return false;
     }
     if (!data.modelName) {
-      showInfo("Model name is required.");
+      showInfo(t("wizard_req_model_name"));
       els.wizardModelName.focus();
       return false;
     }
     if (!data.apiBase) {
-      showInfo("API base is required.");
+      showInfo(t("wizard_req_api_base"));
       els.wizardApiBase.focus();
       return false;
     }
     if (!data.apiKey) {
-      showInfo("API key is required.");
+      showInfo(t("wizard_req_api_key"));
       els.wizardApiKey.focus();
       return false;
     }
@@ -1081,12 +1568,12 @@ function validateWizardStep(step) {
 
   if (step === 2 && data.telegramEnabled) {
     if (!data.telegramToken) {
-      showInfo("Telegram bot token is required when Telegram is enabled.");
+      showInfo(t("wizard_req_tg_token"));
       els.wizardTelegramToken.focus();
       return false;
     }
     if (parseIdList(data.telegramAllowFrom).length === 0) {
-      showInfo("At least one allowed Telegram user ID is required.");
+      showInfo(t("wizard_req_tg_allow"));
       els.wizardTelegramAllowFrom.focus();
       return false;
     }
@@ -1121,7 +1608,7 @@ async function createAgentFromWizard() {
     await selectAgent(created.id);
     setTab("dashboard");
 
-    showInfo("Agent created and started.");
+    showInfo(t("toast_agent_created_started"));
   } catch (error) {
     showError(error);
   } finally {
@@ -1157,7 +1644,7 @@ function bindEvents() {
   els.createAgentBtn.addEventListener("click", () => openCreateWizard());
 
   els.importBackupBtn.addEventListener("click", async () => {
-    const preferred = window.prompt("Optional: agent name after import", "");
+    const preferred = window.prompt(t("prompt_optional_imported_name"), "");
     try {
       const imported = await api.importBackup(preferred || "");
       if (imported && imported.id) {
@@ -1183,7 +1670,7 @@ function bindEvents() {
     if (!selected) {
       return;
     }
-    const name = window.prompt("New agent name", selected.meta.name || selected.id);
+    const name = window.prompt(t("prompt_new_agent_name"), selected.meta.name || selected.id);
     if (name === null) {
       return;
     }
@@ -1214,7 +1701,11 @@ function bindEvents() {
     if (!selected) {
       return;
     }
-    const yes = window.confirm(`Delete agent "${selected.meta.name || selected.id}"? This removes config/workspace/logs.`);
+    const yes = window.confirm(
+      t("confirm_delete_agent", {
+        name: selected.meta.name || selected.id
+      })
+    );
     if (!yes) {
       return;
     }
@@ -1238,7 +1729,7 @@ function bindEvents() {
     try {
       const out = await api.importConfig(selected.id);
       if (out) {
-        showInfo("Config imported.");
+        showInfo(t("toast_config_imported"));
         await refreshAgents(true);
         await loadConfig();
       }
@@ -1255,7 +1746,7 @@ function bindEvents() {
     try {
       const out = await api.exportConfig(selected.id);
       if (out) {
-        showInfo(`Config exported: ${out.filePath}`);
+        showInfo(t("toast_config_exported", { path: out.filePath }));
       }
     } catch (error) {
       showError(error);
@@ -1272,7 +1763,7 @@ function bindEvents() {
     if (!selected) {
       return;
     }
-    if (!window.confirm("Clear logs for current agent?")) {
+    if (!window.confirm(t("confirm_clear_logs"))) {
       return;
     }
     try {
@@ -1290,7 +1781,7 @@ function bindEvents() {
     }
     try {
       await api.createBackup(selected.id);
-      showInfo("Backup created.");
+      showInfo(t("toast_backup_created"));
       await refreshBackups();
     } catch (error) {
       showError(error);
@@ -1305,12 +1796,17 @@ function bindEvents() {
     try {
       const out = await api.exportBackup(selected.id);
       if (out) {
-        showInfo(`Backup exported: ${out.filePath}`);
+        showInfo(t("toast_backup_exported", { path: out.filePath }));
       }
       await refreshBackups();
     } catch (error) {
       showError(error);
     }
+  });
+
+  els.languageSelect.addEventListener("change", () => {
+    state.settings.language = els.languageSelect.value || "en";
+    applyLocale();
   });
 
   els.saveSettingsBtn.addEventListener("click", () => {
@@ -1361,7 +1857,8 @@ async function boot() {
   state.appInfo = await api.init();
   if (state.appInfo && state.appInfo.settings) {
     state.settings = {
-      closeBehavior: state.appInfo.settings.closeBehavior || "ask"
+      closeBehavior: state.appInfo.settings.closeBehavior || "ask",
+      language: state.appInfo.settings.language || "en"
     };
   }
   renderRuntimeInfo();
