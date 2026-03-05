@@ -1,0 +1,81 @@
+[
+    {
+    "name":"OpenAI",
+    "models":[
+        "gpt-3.5",
+        "gpt-4o",
+        "gpt-5",
+        "gpt-5.3-codex",
+        "gpt-5-nano"
+    ],
+    "base_url":"https://api.openai.com/v1",
+    "support_oath":true
+},
+  {
+    "name": "gemini",
+    "models": [
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+      "gemini-2.0-flash",
+      "gemini-2.0-pro"
+    ],
+    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "support_oath": true
+  },
+  {
+    "name": "claude",
+    "models": [
+      "claude-3-haiku",
+      "claude-3-sonnet",
+      "claude-3-opus",
+      "claude-3.5-sonnet"
+    ],
+    "base_url": "https://api.anthropic.com/v1",
+    "support_oath": false
+  },
+  {
+    "name": "deepseek",
+    "models": [
+      "deepseek-chat",
+      "deepseek-coder",
+      "deepseek-reasoner"
+    ],
+    "base_url": "https://api.deepseek.com/v1",
+    "support_oath": false
+  },
+  {
+    "name": "minimax",
+    "models": [
+      "MiniMax-M2",
+      "MiniMax-M2.1",
+      "MiniMax-M2.5",
+      "MiniMax-M2.1-lightning",
+      "MiniMax-M2.5-lightning",
+      "MiniMax-M2.5-highspeed"
+    ],
+    "base_url": "https://api.minimax.chat/v1",
+    "support_oath": true
+  },
+  {
+    "name": "qwen",
+    "models": [
+      "qwen-turbo",
+      "qwen-plus",
+      "qwen-max",
+      "qwen2.5-3b-instruct",
+      "qwen2.5-7b-instruct"
+    ],
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "support_oath": true
+  },
+  {
+    "name": "glm",
+    "models": [
+      "glm-4",
+      "glm-4-air",
+      "glm-4-flash"
+    ],
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "support_oath": true
+  }
+]

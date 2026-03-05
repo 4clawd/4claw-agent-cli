@@ -2,6 +2,7 @@
 
 const state = {
   appInfo: null,
+  modelCatalog: [],
   agents: [],
   selectedAgentId: "",
   selectedTab: "dashboard",
@@ -43,7 +44,8 @@ const els = {
   quickConfigPanel: document.getElementById("quickConfigPanel"),
   fullConfigPanel: document.getElementById("fullConfigPanel"),
   quickAgentName: document.getElementById("quickAgentName"),
-  quickModelAlias: document.getElementById("quickModelAlias"),
+  quickModelPlatform: document.getElementById("quickModelPlatform"),
+  quickModelPreset: document.getElementById("quickModelPreset"),
   quickModelName: document.getElementById("quickModelName"),
   quickApiBase: document.getElementById("quickApiBase"),
   quickApiKey: document.getElementById("quickApiKey"),
@@ -67,7 +69,8 @@ const els = {
   wizardStep1: document.getElementById("wizardStep1"),
   wizardStep2: document.getElementById("wizardStep2"),
   wizardAgentName: document.getElementById("wizardAgentName"),
-  wizardModelAlias: document.getElementById("wizardModelAlias"),
+  wizardModelPlatform: document.getElementById("wizardModelPlatform"),
+  wizardModelPreset: document.getElementById("wizardModelPreset"),
   wizardModelName: document.getElementById("wizardModelName"),
   wizardApiBase: document.getElementById("wizardApiBase"),
   wizardApiKey: document.getElementById("wizardApiKey"),
@@ -88,6 +91,8 @@ const wizardState = {
 
 let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
+const CUSTOMER_PLATFORM = "__customer_platform__";
+const CUSTOMER_MODEL = "__customer_model__";
 
 const I18N = {
   en: {
@@ -113,14 +118,15 @@ const I18N = {
     quick_config: "Quick Config",
     full_config: "Full Config",
     agent_name: "Agent Name",
-    model_alias: "Model Alias",
+    model_platform: "Model Platform",
+    platform_model: "Platform Model",
+    model_customer: "customer",
     model_name: "Model Name",
     api_base: "API Base",
     api_key: "API Key",
     enable_telegram: "Enable Telegram",
     telegram_token: "Telegram Bot Token",
     allow_user_ids: "Allowed User IDs (comma separated)",
-    placeholder_model_alias: "e.g. gpt4",
     placeholder_model_name: "e.g. openai/gpt-5.2",
     placeholder_api_base: "e.g. https://api.openai.com/v1",
     placeholder_allow_ids: "e.g. 123456789, 987654321",
@@ -198,7 +204,6 @@ const I18N = {
     prompt_new_field_name: "New field name",
     toast_field_exists: "Field already exists.",
     wizard_req_agent_name: "Agent name is required.",
-    wizard_req_model_alias: "Model alias is required.",
     wizard_req_model_name: "Model name is required.",
     wizard_req_api_base: "API base is required.",
     wizard_req_api_key: "API key is required.",
@@ -228,14 +233,15 @@ const I18N = {
     quick_config: "快速配置",
     full_config: "完整配置",
     agent_name: "Agent 名称",
-    model_alias: "模型别名",
+    model_platform: "模型平台",
+    platform_model: "平台模型",
+    model_customer: "customer（自定义）",
     model_name: "模型名称",
     api_base: "API 地址",
     api_key: "API Key",
     enable_telegram: "启用 Telegram",
     telegram_token: "Telegram Bot Token",
     allow_user_ids: "允许访问用户 ID（逗号分隔）",
-    placeholder_model_alias: "例如 gpt4",
     placeholder_model_name: "例如 openai/gpt-5.2",
     placeholder_api_base: "例如 https://api.openai.com/v1",
     placeholder_allow_ids: "例如 123456789, 987654321",
@@ -313,7 +319,6 @@ const I18N = {
     prompt_new_field_name: "请输入字段名",
     toast_field_exists: "字段已存在。",
     wizard_req_agent_name: "Agent 名称不能为空。",
-    wizard_req_model_alias: "模型别名不能为空。",
     wizard_req_model_name: "模型名称不能为空。",
     wizard_req_api_base: "API 地址不能为空。",
     wizard_req_api_key: "API Key 不能为空。",
@@ -343,14 +348,15 @@ const I18N = {
     quick_config: "Быстрый конфиг",
     full_config: "Полный конфиг",
     agent_name: "Имя агента",
-    model_alias: "Псевдоним модели",
+    model_platform: "Платформа модели",
+    platform_model: "Модель платформы",
+    model_customer: "customer",
     model_name: "Имя модели",
     api_base: "API Base",
     api_key: "API Key",
     enable_telegram: "Включить Telegram",
     telegram_token: "Токен Telegram бота",
     allow_user_ids: "Разрешенные ID пользователей (через запятую)",
-    placeholder_model_alias: "например gpt4",
     placeholder_model_name: "например openai/gpt-5.2",
     placeholder_api_base: "например https://api.openai.com/v1",
     placeholder_allow_ids: "например 123456789, 987654321",
@@ -428,7 +434,6 @@ const I18N = {
     prompt_new_field_name: "Введите имя поля",
     toast_field_exists: "Поле уже существует.",
     wizard_req_agent_name: "Требуется имя агента.",
-    wizard_req_model_alias: "Требуется псевдоним модели.",
     wizard_req_model_name: "Требуется имя модели.",
     wizard_req_api_base: "Требуется API Base.",
     wizard_req_api_key: "Требуется API Key.",
@@ -460,6 +465,166 @@ function setText(id, value) {
   }
 }
 
+function normalizeModelCatalog(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item, index) => {
+      const displayName = String(item?.name || "").trim();
+      const id = displayName ? displayName.toLowerCase() : `platform-${index + 1}`;
+      const models = Array.isArray(item?.models)
+        ? item.models.map((m) => String(m || "").trim()).filter(Boolean)
+        : [];
+      return {
+        id,
+        name: displayName || `Platform ${index + 1}`,
+        baseUrl: String(item?.base_url || "").trim(),
+        models
+      };
+    })
+    .filter((item) => item.name);
+}
+
+function getPlatformById(platformId) {
+  return state.modelCatalog.find((item) => item.id === platformId) || null;
+}
+
+function getModelFormElements(scope) {
+  if (scope === "wizard") {
+    return {
+      platform: els.wizardModelPlatform,
+      preset: els.wizardModelPreset,
+      modelName: els.wizardModelName,
+      apiBase: els.wizardApiBase
+    };
+  }
+  return {
+    platform: els.quickModelPlatform,
+    preset: els.quickModelPreset,
+    modelName: els.quickModelName,
+    apiBase: els.quickApiBase
+  };
+}
+
+function setSelectOptions(selectEl, options, selectedValue) {
+  if (!selectEl) {
+    return;
+  }
+  selectEl.innerHTML = "";
+  for (const item of options) {
+    const opt = document.createElement("option");
+    opt.value = item.value;
+    opt.textContent = item.label;
+    selectEl.appendChild(opt);
+  }
+  const hasSelected = options.some((item) => item.value === selectedValue);
+  selectEl.value = hasSelected ? selectedValue : options[0]?.value || "";
+}
+
+function getPlatformOptions() {
+  const options = state.modelCatalog.map((platform) => ({
+    value: platform.id,
+    label: platform.name
+  }));
+  options.push({ value: CUSTOMER_PLATFORM, label: t("model_customer") });
+  return options;
+}
+
+function getModelPresetOptions(platformId) {
+  const platform = getPlatformById(platformId);
+  if (!platform) {
+    return [{ value: CUSTOMER_MODEL, label: t("model_customer") }];
+  }
+  const options = platform.models.map((modelName) => ({
+    value: modelName,
+    label: modelName
+  }));
+  options.push({ value: CUSTOMER_MODEL, label: t("model_customer") });
+  return options;
+}
+
+function renderModelSelectors(scope, desiredPlatformId = "", desiredPreset = "") {
+  const form = getModelFormElements(scope);
+  if (!form.platform || !form.preset) {
+    return;
+  }
+  const fallbackPlatformId = state.modelCatalog[0]?.id || CUSTOMER_PLATFORM;
+  const platformId =
+    desiredPlatformId && (desiredPlatformId === CUSTOMER_PLATFORM || getPlatformById(desiredPlatformId))
+      ? desiredPlatformId
+      : fallbackPlatformId;
+
+  setSelectOptions(form.platform, getPlatformOptions(), platformId);
+
+  const modelOptions = getModelPresetOptions(form.platform.value);
+  const fallbackPreset = modelOptions[0]?.value || CUSTOMER_MODEL;
+  const presetValue = modelOptions.some((item) => item.value === desiredPreset) ? desiredPreset : fallbackPreset;
+  setSelectOptions(form.preset, modelOptions, presetValue);
+}
+
+function applyModelSelection(scope, { preserveCustomName = false } = {}) {
+  const form = getModelFormElements(scope);
+  if (!form.platform || !form.preset || !form.modelName || !form.apiBase) {
+    return;
+  }
+
+  const platformId = form.platform.value || CUSTOMER_PLATFORM;
+  const preset = form.preset.value || CUSTOMER_MODEL;
+  const platform = getPlatformById(platformId);
+
+  if (!platform || platformId === CUSTOMER_PLATFORM) {
+    form.apiBase.readOnly = false;
+    form.modelName.readOnly = false;
+    if (!preserveCustomName) {
+      form.apiBase.value = "";
+      form.modelName.value = "";
+    }
+    return;
+  }
+
+  form.apiBase.value = platform.baseUrl || "";
+  form.apiBase.readOnly = true;
+
+  if (preset === CUSTOMER_MODEL) {
+    form.modelName.readOnly = false;
+    if (!preserveCustomName) {
+      form.modelName.value = "";
+    }
+    return;
+  }
+
+  form.modelName.value = preset;
+  form.modelName.readOnly = true;
+}
+
+function detectModelSelection(modelName, apiBase) {
+  const name = String(modelName || "").trim();
+  const base = String(apiBase || "").trim();
+  for (const platform of state.modelCatalog) {
+    if (!platform.baseUrl || platform.baseUrl !== base) {
+      continue;
+    }
+    if (platform.models.includes(name)) {
+      return { platformId: platform.id, modelPreset: name };
+    }
+    return { platformId: platform.id, modelPreset: CUSTOMER_MODEL };
+  }
+  return { platformId: CUSTOMER_PLATFORM, modelPreset: CUSTOMER_MODEL };
+}
+
+function refreshModelControlsLocale() {
+  const quickPlatform = els.quickModelPlatform?.value || "";
+  const quickPreset = els.quickModelPreset?.value || "";
+  renderModelSelectors("quick", quickPlatform, quickPreset);
+  applyModelSelection("quick", { preserveCustomName: true });
+
+  const wizardPlatform = els.wizardModelPlatform?.value || "";
+  const wizardPreset = els.wizardModelPreset?.value || "";
+  renderModelSelectors("wizard", wizardPlatform, wizardPreset);
+  applyModelSelection("wizard", { preserveCustomName: true });
+}
+
 function applyLocale() {
   const locale = getLocale();
   document.documentElement.lang = locale === "zh-CN" ? "zh-CN" : locale;
@@ -483,7 +648,8 @@ function applyLocale() {
   setText("quickConfigTabBtn", t("quick_config"));
   setText("fullConfigTabBtn", t("full_config"));
   setText("quickAgentNameLabel", t("agent_name"));
-  setText("quickModelAliasLabel", t("model_alias"));
+  setText("quickModelPlatformLabel", t("model_platform"));
+  setText("quickModelPresetLabel", t("platform_model"));
   setText("quickModelNameLabel", t("model_name"));
   setText("quickApiBaseLabel", t("api_base"));
   setText("quickApiKeyLabel", t("api_key"));
@@ -506,7 +672,8 @@ function applyLocale() {
   setText("settingsHintText", t("settings_hint"));
   setText("wizardTitle", t("wizard_title"));
   setText("wizardAgentNameLabel", t("agent_name"));
-  setText("wizardModelAliasLabel", t("model_alias"));
+  setText("wizardModelPlatformLabel", t("model_platform"));
+  setText("wizardModelPresetLabel", t("platform_model"));
   setText("wizardModelNameLabel", t("model_name"));
   setText("wizardApiBaseLabel", t("api_base"));
   setText("wizardApiKeyLabel", t("api_key"));
@@ -518,9 +685,6 @@ function applyLocale() {
   setText("wizardNextBtn", t("wizard_next"));
   setText("wizardSubmitBtn", t("wizard_create_start"));
 
-  if (els.quickModelAlias) {
-    els.quickModelAlias.placeholder = t("placeholder_model_alias");
-  }
   if (els.quickModelName) {
     els.quickModelName.placeholder = t("placeholder_model_name");
   }
@@ -555,6 +719,8 @@ function applyLocale() {
   if (langOptionRU) {
     langOptionRU.textContent = t("language_ru");
   }
+
+  refreshModelControlsLocale();
 
   renderSelectedTitle();
   renderAgentList();
@@ -974,15 +1140,19 @@ function findModelEntry(cfg, alias) {
 function getQuickDataFromConfig(cfg, selected) {
   const safe = ensureConfigRoots(safeClone(cfg || {}));
   const defaults = safe.agents.defaults || {};
-  const defaultAlias = String(defaults.model || "").trim() || "gpt4";
+  const defaultAlias = String(defaults.model || "").trim() || "";
   const entry = findModelEntry(safe, defaultAlias) || {};
   const telegram = safe.channels.telegram || {};
+  const modelName = String(entry.model || defaultAlias || "").trim();
+  const apiBase = String(entry.api_base || "").trim();
+  const selection = detectModelSelection(modelName, apiBase);
 
   return {
     agentName: selected ? String(selected.meta.name || selected.id || "") : "",
-    modelAlias: defaultAlias,
-    modelName: String(entry.model || ""),
-    apiBase: String(entry.api_base || ""),
+    modelPlatform: selection.platformId,
+    modelPreset: selection.modelPreset,
+    modelName,
+    apiBase,
     apiKey: String(entry.api_key || ""),
     telegramEnabled: Boolean(telegram.enabled),
     telegramToken: String(telegram.token || ""),
@@ -994,9 +1164,10 @@ function renderQuickConfig() {
   const selected = getSelectedAgent();
   if (!selected || !state.configDraft) {
     els.quickAgentName.value = "";
-    els.quickModelAlias.value = "";
+    renderModelSelectors("quick");
     els.quickModelName.value = "";
     els.quickApiBase.value = "";
+    applyModelSelection("quick", { preserveCustomName: true });
     els.quickApiKey.value = "";
     els.quickTelegramEnabled.checked = false;
     els.quickTelegramToken.value = "";
@@ -1006,9 +1177,10 @@ function renderQuickConfig() {
 
   const quick = getQuickDataFromConfig(state.configDraft, selected);
   els.quickAgentName.value = quick.agentName;
-  els.quickModelAlias.value = quick.modelAlias;
+  renderModelSelectors("quick", quick.modelPlatform, quick.modelPreset);
   els.quickModelName.value = quick.modelName;
   els.quickApiBase.value = quick.apiBase;
+  applyModelSelection("quick", { preserveCustomName: true });
   els.quickApiKey.value = quick.apiKey;
   els.quickTelegramEnabled.checked = quick.telegramEnabled;
   els.quickTelegramToken.value = quick.telegramToken;
@@ -1018,7 +1190,8 @@ function renderQuickConfig() {
 function getQuickDataFromInputs() {
   return {
     agentName: String(els.quickAgentName.value || "").trim(),
-    modelAlias: String(els.quickModelAlias.value || "").trim(),
+    modelPlatform: String(els.quickModelPlatform.value || "").trim(),
+    modelPreset: String(els.quickModelPreset.value || "").trim(),
     modelName: String(els.quickModelName.value || "").trim(),
     apiBase: String(els.quickApiBase.value || "").trim(),
     apiKey: String(els.quickApiKey.value || "").trim(),
@@ -1030,7 +1203,7 @@ function getQuickDataFromInputs() {
 
 function applyQuickDataToConfig(cfg, quick) {
   const safe = ensureConfigRoots(cfg);
-  const alias = quick.modelAlias || String(safe.agents.defaults.model || "").trim() || "gpt4";
+  const alias = quick.modelName || String(safe.agents.defaults.model || "").trim() || "default-model";
   safe.agents.defaults.model = alias;
 
   if (!Array.isArray(safe.model_list)) {
@@ -1501,9 +1674,10 @@ function openCreateWizard() {
   lockWizardButtons(false);
 
   els.wizardAgentName.value = "";
-  els.wizardModelAlias.value = "gpt4";
+  renderModelSelectors("wizard");
   els.wizardModelName.value = "";
-  els.wizardApiBase.value = "https://api.openai.com/v1";
+  els.wizardApiBase.value = "";
+  applyModelSelection("wizard", { preserveCustomName: false });
   els.wizardApiKey.value = "";
   els.wizardTelegramEnabled.checked = true;
   els.wizardTelegramToken.value = "";
@@ -1525,7 +1699,8 @@ function closeCreateWizard() {
 function collectWizardData() {
   return {
     agentName: String(els.wizardAgentName.value || "").trim(),
-    modelAlias: String(els.wizardModelAlias.value || "").trim(),
+    modelPlatform: String(els.wizardModelPlatform.value || "").trim(),
+    modelPreset: String(els.wizardModelPreset.value || "").trim(),
     modelName: String(els.wizardModelName.value || "").trim(),
     apiBase: String(els.wizardApiBase.value || "").trim(),
     apiKey: String(els.wizardApiKey.value || "").trim(),
@@ -1542,11 +1717,6 @@ function validateWizardStep(step) {
     if (!data.agentName) {
       showInfo(t("wizard_req_agent_name"));
       els.wizardAgentName.focus();
-      return false;
-    }
-    if (!data.modelAlias) {
-      showInfo(t("wizard_req_model_alias"));
-      els.wizardModelAlias.focus();
       return false;
     }
     if (!data.modelName) {
@@ -1640,6 +1810,22 @@ function bindEvents() {
 
   els.quickConfigTabBtn.addEventListener("click", () => setConfigView("quick"));
   els.fullConfigTabBtn.addEventListener("click", () => setConfigView("full"));
+
+  els.quickModelPlatform.addEventListener("change", () => {
+    renderModelSelectors("quick", els.quickModelPlatform.value, "");
+    applyModelSelection("quick", { preserveCustomName: false });
+  });
+  els.quickModelPreset.addEventListener("change", () => {
+    applyModelSelection("quick", { preserveCustomName: false });
+  });
+
+  els.wizardModelPlatform.addEventListener("change", () => {
+    renderModelSelectors("wizard", els.wizardModelPlatform.value, "");
+    applyModelSelection("wizard", { preserveCustomName: false });
+  });
+  els.wizardModelPreset.addEventListener("change", () => {
+    applyModelSelection("wizard", { preserveCustomName: false });
+  });
 
   els.createAgentBtn.addEventListener("click", () => openCreateWizard());
 
@@ -1855,12 +2041,17 @@ function bindEvents() {
 async function boot() {
   bindEvents();
   state.appInfo = await api.init();
+  state.modelCatalog = normalizeModelCatalog(state.appInfo?.modelCatalog || []);
   if (state.appInfo && state.appInfo.settings) {
     state.settings = {
       closeBehavior: state.appInfo.settings.closeBehavior || "ask",
       language: state.appInfo.settings.language || "en"
     };
   }
+  renderModelSelectors("quick");
+  renderModelSelectors("wizard");
+  applyModelSelection("quick", { preserveCustomName: true });
+  applyModelSelection("wizard", { preserveCustomName: true });
   renderRuntimeInfo();
   await loadSettings();
   setConfigView("quick");

@@ -134,6 +134,23 @@ function resolveIconPath(candidates) {
   return "";
 }
 
+function loadModelCatalog() {
+  const candidates = [
+    path.join(app.getAppPath(), "src", "models.json"),
+    path.join(process.cwd(), "src", "models.json")
+  ];
+  const filePath = candidates.find((item) => item && fs.existsSync(item));
+  if (!filePath) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function resolveAppIconPath() {
   return resolveIconPath([
     path.join(app.getAppPath(), "assets", "logo.png"),
@@ -307,6 +324,7 @@ function setupIpc() {
       userData: agentService.paths.userData,
       runtimeRoot: agentService.paths.root,
       settings: appSettings,
+      modelCatalog: loadModelCatalog(),
       binary,
       binaryDropPath: path.join(process.cwd(), "resources", "bin", binary.binaryName)
     };
