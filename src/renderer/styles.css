@@ -722,6 +722,23 @@ button {
   resize: vertical;
 }
 
+.channel-array-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.channel-array-list {
+  display: grid;
+  gap: 6px;
+}
+
+.channel-array-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
 .wizard-mask {
   position: fixed;
   inset: 0;

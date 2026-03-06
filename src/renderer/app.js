@@ -142,6 +142,8 @@ const I18N = {
     placeholder_model_name: "e.g. openai/gpt-5.2",
     placeholder_api_base: "e.g. https://api.openai.com/v1",
     placeholder_channel_json: "Use JSON format",
+    placeholder_array_item: "Enter item",
+    array_add_item: "Add Item",
     save_quick_config: "Save Quick Config",
     save_full_config: "Save Full Config",
     refresh_logs: "Refresh Logs",
@@ -257,6 +259,8 @@ const I18N = {
     placeholder_model_name: "例如 openai/gpt-5.2",
     placeholder_api_base: "例如 https://api.openai.com/v1",
     placeholder_channel_json: "请使用 JSON 格式",
+    placeholder_array_item: "填写一项内容",
+    array_add_item: "新增项",
     save_quick_config: "保存快速配置",
     save_full_config: "保存完整配置",
     refresh_logs: "刷新日志",
@@ -372,6 +376,8 @@ const I18N = {
     placeholder_model_name: "например openai/gpt-5.2",
     placeholder_api_base: "например https://api.openai.com/v1",
     placeholder_channel_json: "Используйте формат JSON",
+    placeholder_array_item: "Введите элемент",
+    array_add_item: "Добавить элемент",
     save_quick_config: "Сохранить быстрый конфиг",
     save_full_config: "Сохранить полный конфиг",
     refresh_logs: "Обновить логи",
@@ -669,7 +675,10 @@ function getChannelFieldEntries(channelKey) {
 }
 
 function normalizeChannelRawValue(value) {
-  if (Array.isArray(value) || (value && typeof value === "object")) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? ""));
+  }
+  if (value && typeof value === "object") {
     return JSON.stringify(value, null, 2);
   }
   if (value === undefined || value === null) {
@@ -679,13 +688,35 @@ function normalizeChannelRawValue(value) {
 }
 
 function parseChannelTypedValue(rawValue, templateValue, fieldName) {
-  if (Array.isArray(templateValue) || (templateValue && typeof templateValue === "object")) {
+  if (Array.isArray(templateValue)) {
+    if (Array.isArray(rawValue)) {
+      return rawValue.map((item) => String(item ?? "")).filter((item) => item !== "");
+    }
     const raw = String(rawValue || "").trim();
     if (!raw) {
-      return Array.isArray(templateValue) ? [] : {};
+      return [];
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error("invalid array");
+      }
+      return parsed;
+    } catch {
+      throw new Error(t("toast_invalid_channel_json", { field: fieldName }));
+    }
+  }
+  if (templateValue && typeof templateValue === "object") {
+    const raw = String(rawValue || "").trim();
+    if (!raw) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("invalid object");
+      }
+      return parsed;
     } catch {
       throw new Error(t("toast_invalid_channel_json", { field: fieldName }));
     }
@@ -807,7 +838,90 @@ function renderChannelFields(scope, channelKey) {
       continue;
     }
 
-    if (Array.isArray(templateValue) || (templateValue && typeof templateValue === "object")) {
+    if (Array.isArray(templateValue)) {
+      const editor = document.createElement("div");
+      editor.className = "channel-array-editor";
+      const list = document.createElement("div");
+      list.className = "channel-array-list";
+
+      const ensureArrayRef = () => {
+        if (Array.isArray(store[channelKey][field])) {
+          return store[channelKey][field];
+        }
+        if (typeof store[channelKey][field] === "string") {
+          const raw = String(store[channelKey][field]).trim();
+          if (!raw) {
+            store[channelKey][field] = [];
+            return store[channelKey][field];
+          }
+          try {
+            const parsed = JSON.parse(raw);
+            store[channelKey][field] = Array.isArray(parsed) ? parsed.map((item) => String(item ?? "")) : [];
+          } catch {
+            store[channelKey][field] = [];
+          }
+          return store[channelKey][field];
+        }
+        store[channelKey][field] = [];
+        return store[channelKey][field];
+      };
+
+      const renderArrayItems = () => {
+        const arr = ensureArrayRef();
+        list.innerHTML = "";
+        if (!arr.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = t("json_empty_array");
+          list.appendChild(empty);
+          return;
+        }
+        arr.forEach((item, index) => {
+          const row = document.createElement("div");
+          row.className = "channel-array-row";
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = String(item ?? "");
+          input.placeholder = t("placeholder_array_item");
+          input.addEventListener("input", () => {
+            arr[index] = input.value;
+          });
+
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "btn btn-xs";
+          removeBtn.textContent = t("json_delete");
+          removeBtn.addEventListener("click", () => {
+            arr.splice(index, 1);
+            renderArrayItems();
+          });
+
+          row.appendChild(input);
+          row.appendChild(removeBtn);
+          list.appendChild(row);
+        });
+      };
+
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "btn btn-xs";
+      addBtn.textContent = t("array_add_item");
+      addBtn.addEventListener("click", () => {
+        const arr = ensureArrayRef();
+        arr.push("");
+        renderArrayItems();
+      });
+
+      renderArrayItems();
+      editor.appendChild(list);
+      editor.appendChild(addBtn);
+      wrap.appendChild(editor);
+      fields.appendChild(wrap);
+      continue;
+    }
+
+    if (templateValue && typeof templateValue === "object") {
       const textarea = document.createElement("textarea");
       textarea.value = String(store[channelKey][field] ?? "");
       textarea.placeholder = t("placeholder_channel_json");
