@@ -56,6 +56,7 @@ const els = {
   configEditor: document.getElementById("configEditor"),
   refreshLogsBtn: document.getElementById("refreshLogsBtn"),
   clearLogsBtn: document.getElementById("clearLogsBtn"),
+  logScrollBottomBtn: document.getElementById("logScrollBottomBtn"),
   logViewer: document.getElementById("logViewer"),
   createBackupBtn: document.getElementById("createBackupBtn"),
   exportBackupBtn: document.getElementById("exportBackupBtn"),
@@ -133,6 +134,7 @@ const I18N = {
     save_full_config: "Save Full Config",
     refresh_logs: "Refresh Logs",
     clear_logs: "Clear Logs",
+    logs_scroll_bottom: "Scroll to bottom",
     create_backup: "Create Backup",
     export_backup: "Export Backup",
     settings_close_behavior: "Window Close Behavior",
@@ -248,6 +250,7 @@ const I18N = {
     save_full_config: "保存完整配置",
     refresh_logs: "刷新日志",
     clear_logs: "清空日志",
+    logs_scroll_bottom: "滑到底部",
     create_backup: "创建备份",
     export_backup: "导出备份",
     settings_close_behavior: "关闭窗口行为",
@@ -363,6 +366,7 @@ const I18N = {
     save_full_config: "Сохранить полный конфиг",
     refresh_logs: "Обновить логи",
     clear_logs: "Очистить логи",
+    logs_scroll_bottom: "Прокрутить вниз",
     create_backup: "Создать бэкап",
     export_backup: "Экспорт бэкапа",
     settings_close_behavior: "Поведение при закрытии окна",
@@ -658,6 +662,11 @@ function applyLocale() {
   setText("saveConfigBtn", t("save_full_config"));
   setText("refreshLogsBtn", t("refresh_logs"));
   setText("clearLogsBtn", t("clear_logs"));
+  if (els.logScrollBottomBtn) {
+    const label = t("logs_scroll_bottom");
+    els.logScrollBottomBtn.title = label;
+    els.logScrollBottomBtn.setAttribute("aria-label", label);
+  }
   setText("createBackupBtn", t("create_backup"));
   setText("exportBackupBtn", t("export_backup"));
   setText("settingsCloseBehaviorTitle", t("settings_close_behavior"));
@@ -1566,6 +1575,17 @@ function renderConfigEditor() {
   els.configEditor.appendChild(createNodeEditor(state.configDraft, [], "config"));
 }
 
+function scrollLogsToBottom() {
+  if (!els.logViewer) {
+    return;
+  }
+  try {
+    els.logViewer.scrollTo({ top: els.logViewer.scrollHeight, behavior: "smooth" });
+  } catch {
+    els.logViewer.scrollTop = els.logViewer.scrollHeight;
+  }
+}
+
 async function refreshLogs() {
   if (logsRefreshInFlight) {
     return;
@@ -1922,6 +1942,7 @@ function bindEvents() {
   els.saveQuickConfigBtn.addEventListener("click", () => saveQuickConfig());
   els.saveConfigBtn.addEventListener("click", () => saveConfig());
   els.refreshLogsBtn.addEventListener("click", () => refreshLogs());
+  els.logScrollBottomBtn.addEventListener("click", () => scrollLogsToBottom());
 
   els.clearLogsBtn.addEventListener("click", async () => {
     const selected = ensureSelectedAgent();

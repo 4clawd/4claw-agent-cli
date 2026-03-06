@@ -555,6 +555,40 @@ button {
   overflow: auto;
 }
 
+#tab-logs {
+  position: relative;
+}
+
+.log-scroll-bottom-btn {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(184, 140, 26, 0.36);
+  border-radius: 999px;
+  background: linear-gradient(130deg, rgba(243, 186, 47, 0.95), rgba(247, 169, 40, 0.95));
+  color: #4b310d;
+  box-shadow: 0 8px 18px rgba(213, 166, 42, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 5;
+}
+
+.log-scroll-bottom-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.log-scroll-bottom-btn:hover {
+  filter: brightness(0.97);
+}
+
+.log-scroll-bottom-btn:active {
+  transform: translateY(1px);
+}
+
 .backup-list {
   display: grid;
   gap: 10px;
