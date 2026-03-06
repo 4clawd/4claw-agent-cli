@@ -87,7 +87,7 @@
       "allow_from": []
     },
     "wecom": {
-      "_comment": "WeCom Bot (鏅鸿兘鏈哄櫒浜? - Easier setup, supports group chats",
+      "_comment": "WeCom Bot - Easier setup, supports group chats",
       "enabled": false,
       "token": "YOUR_TOKEN",
       "encoding_aes_key": "YOUR_43_CHAR_ENCODING_AES_KEY",
@@ -99,7 +99,7 @@
       "reply_timeout": 5
     },
     "wecom_app": {
-      "_comment": "WeCom App (鑷缓搴旂敤) - More features, proactive messaging, private chat only. See docs/wecom-app-configuration.md",
+      "_comment": "WeCom App - More features, proactive messaging, private chat only. See docs/wecom-app-configuration.md",
       "enabled": false,
       "corp_id": "YOUR_CORP_ID",
       "corp_secret": "YOUR_CORP_SECRET",

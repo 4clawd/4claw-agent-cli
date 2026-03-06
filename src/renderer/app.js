@@ -3,6 +3,7 @@
 const state = {
   appInfo: null,
   modelCatalog: [],
+  defaultConfig: {},
   agents: [],
   selectedAgentId: "",
   selectedTab: "dashboard",
@@ -14,7 +15,9 @@ const state = {
   settings: {
     closeBehavior: "ask",
     language: "en"
-  }
+  },
+  quickChannelValues: {},
+  wizardChannelValues: {}
 };
 
 const els = {
@@ -48,9 +51,8 @@ const els = {
   quickModelName: document.getElementById("quickModelName"),
   quickApiBase: document.getElementById("quickApiBase"),
   quickApiKey: document.getElementById("quickApiKey"),
-  quickTelegramEnabled: document.getElementById("quickTelegramEnabled"),
-  quickTelegramToken: document.getElementById("quickTelegramToken"),
-  quickTelegramAllowFrom: document.getElementById("quickTelegramAllowFrom"),
+  quickChannelPlatform: document.getElementById("quickChannelPlatform"),
+  quickChannelFields: document.getElementById("quickChannelFields"),
   saveQuickConfigBtn: document.getElementById("saveQuickConfigBtn"),
   saveConfigBtn: document.getElementById("saveConfigBtn"),
   configEditor: document.getElementById("configEditor"),
@@ -74,9 +76,8 @@ const els = {
   wizardModelName: document.getElementById("wizardModelName"),
   wizardApiBase: document.getElementById("wizardApiBase"),
   wizardApiKey: document.getElementById("wizardApiKey"),
-  wizardTelegramEnabled: document.getElementById("wizardTelegramEnabled"),
-  wizardTelegramToken: document.getElementById("wizardTelegramToken"),
-  wizardTelegramAllowFrom: document.getElementById("wizardTelegramAllowFrom"),
+  wizardChannelPlatform: document.getElementById("wizardChannelPlatform"),
+  wizardChannelFields: document.getElementById("wizardChannelFields"),
   wizardCancelBtn: document.getElementById("wizardCancelBtn"),
   wizardPrevBtn: document.getElementById("wizardPrevBtn"),
   wizardNextBtn: document.getElementById("wizardNextBtn"),
@@ -93,6 +94,17 @@ let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
 const CUSTOMER_PLATFORM = "__customer_platform__";
 const CUSTOMER_MODEL = "__customer_model__";
+const CHANNEL_ORDER = ["telegram", "discord", "qq", "whatsapp", "feishu", "dingtalk", "slack", "line"];
+const CHANNEL_LABELS = {
+  telegram: "Telegram",
+  discord: "Discord",
+  qq: "QQ",
+  whatsapp: "WhatsApp",
+  feishu: "飞书",
+  dingtalk: "钉钉",
+  slack: "Slack",
+  line: "Line"
+};
 
 const I18N = {
   en: {
@@ -124,12 +136,12 @@ const I18N = {
     model_name: "Model Name",
     api_base: "API Base",
     api_key: "API Key",
-    enable_telegram: "Enable Telegram",
-    telegram_token: "Telegram Bot Token",
-    allow_user_ids: "Allowed User IDs (comma separated)",
+    channel_platform: "Channel Platform",
+    channel_config: "Channel Config",
+    channel_no_fields: "No configurable fields in default-config for this platform.",
     placeholder_model_name: "e.g. openai/gpt-5.2",
     placeholder_api_base: "e.g. https://api.openai.com/v1",
-    placeholder_allow_ids: "e.g. 123456789, 987654321",
+    placeholder_channel_json: "Use JSON format",
     save_quick_config: "Save Quick Config",
     save_full_config: "Save Full Config",
     refresh_logs: "Refresh Logs",
@@ -204,12 +216,11 @@ const I18N = {
     json_empty_object: "Empty object, click Add Field.",
     prompt_new_field_name: "New field name",
     toast_field_exists: "Field already exists.",
+    toast_invalid_channel_json: "Invalid JSON in channel field: {field}",
     wizard_req_agent_name: "Agent name is required.",
     wizard_req_model_name: "Model name is required.",
     wizard_req_api_base: "API base is required.",
-    wizard_req_api_key: "API key is required.",
-    wizard_req_tg_token: "Telegram bot token is required when Telegram is enabled.",
-    wizard_req_tg_allow: "At least one allowed Telegram user ID is required."
+    wizard_req_api_key: "API key is required."
   },
   "zh-CN": {
     brand_subtitle: "简易便捷的桌面端 4claw CLI",
@@ -240,12 +251,12 @@ const I18N = {
     model_name: "模型名称",
     api_base: "API 地址",
     api_key: "API Key",
-    enable_telegram: "启用 Telegram",
-    telegram_token: "Telegram Bot Token",
-    allow_user_ids: "允许访问用户 ID（逗号分隔）",
+    channel_platform: "通讯平台",
+    channel_config: "平台配置",
+    channel_no_fields: "该平台在 default-config 中没有可配置字段。",
     placeholder_model_name: "例如 openai/gpt-5.2",
     placeholder_api_base: "例如 https://api.openai.com/v1",
-    placeholder_allow_ids: "例如 123456789, 987654321",
+    placeholder_channel_json: "请使用 JSON 格式",
     save_quick_config: "保存快速配置",
     save_full_config: "保存完整配置",
     refresh_logs: "刷新日志",
@@ -320,12 +331,11 @@ const I18N = {
     json_empty_object: "对象为空，点击“新增字段”。",
     prompt_new_field_name: "请输入字段名",
     toast_field_exists: "字段已存在。",
+    toast_invalid_channel_json: "通讯字段 JSON 无效：{field}",
     wizard_req_agent_name: "Agent 名称不能为空。",
     wizard_req_model_name: "模型名称不能为空。",
     wizard_req_api_base: "API 地址不能为空。",
-    wizard_req_api_key: "API Key 不能为空。",
-    wizard_req_tg_token: "启用 Telegram 时，Bot Token 不能为空。",
-    wizard_req_tg_allow: "请至少填写一个允许访问的 Telegram 用户 ID。"
+    wizard_req_api_key: "API Key 不能为空。"
   },
   ru: {
     brand_subtitle: "Простой настольный клиент для 4claw CLI",
@@ -356,12 +366,12 @@ const I18N = {
     model_name: "Имя модели",
     api_base: "API Base",
     api_key: "API Key",
-    enable_telegram: "Включить Telegram",
-    telegram_token: "Токен Telegram бота",
-    allow_user_ids: "Разрешенные ID пользователей (через запятую)",
+    channel_platform: "Платформа связи",
+    channel_config: "Конфиг платформы",
+    channel_no_fields: "Для этой платформы нет настраиваемых полей в default-config.",
     placeholder_model_name: "например openai/gpt-5.2",
     placeholder_api_base: "например https://api.openai.com/v1",
-    placeholder_allow_ids: "например 123456789, 987654321",
+    placeholder_channel_json: "Используйте формат JSON",
     save_quick_config: "Сохранить быстрый конфиг",
     save_full_config: "Сохранить полный конфиг",
     refresh_logs: "Обновить логи",
@@ -436,12 +446,11 @@ const I18N = {
     json_empty_object: "Объект пуст. Нажмите «Добавить поле».",
     prompt_new_field_name: "Введите имя поля",
     toast_field_exists: "Поле уже существует.",
+    toast_invalid_channel_json: "Некорректный JSON в поле канала: {field}",
     wizard_req_agent_name: "Требуется имя агента.",
     wizard_req_model_name: "Требуется имя модели.",
     wizard_req_api_base: "Требуется API Base.",
-    wizard_req_api_key: "Требуется API Key.",
-    wizard_req_tg_token: "При включенном Telegram требуется токен бота.",
-    wizard_req_tg_allow: "Укажите хотя бы один разрешенный Telegram ID."
+    wizard_req_api_key: "Требуется API Key."
   }
 };
 
@@ -628,6 +637,222 @@ function refreshModelControlsLocale() {
   applyModelSelection("wizard", { preserveCustomName: true });
 }
 
+function getChannelElements(scope) {
+  if (scope === "wizard") {
+    return {
+      platform: els.wizardChannelPlatform,
+      fields: els.wizardChannelFields
+    };
+  }
+  return {
+    platform: els.quickChannelPlatform,
+    fields: els.quickChannelFields
+  };
+}
+
+function getChannelStore(scope) {
+  return scope === "wizard" ? state.wizardChannelValues : state.quickChannelValues;
+}
+
+function getChannelTemplate(channelKey) {
+  const channels = state.defaultConfig?.channels;
+  const channel = channels && typeof channels === "object" ? channels[channelKey] : null;
+  if (channel && typeof channel === "object" && !Array.isArray(channel)) {
+    return safeClone(channel);
+  }
+  return { enabled: false };
+}
+
+function getChannelFieldEntries(channelKey) {
+  const template = getChannelTemplate(channelKey);
+  return Object.entries(template).filter(([key]) => key !== "enabled" && !key.startsWith("_"));
+}
+
+function normalizeChannelRawValue(value) {
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    return JSON.stringify(value, null, 2);
+  }
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return value;
+}
+
+function parseChannelTypedValue(rawValue, templateValue, fieldName) {
+  if (Array.isArray(templateValue) || (templateValue && typeof templateValue === "object")) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) {
+      return Array.isArray(templateValue) ? [] : {};
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error(t("toast_invalid_channel_json", { field: fieldName }));
+    }
+  }
+  if (typeof templateValue === "boolean") {
+    return Boolean(rawValue);
+  }
+  if (typeof templateValue === "number") {
+    const n = Number(rawValue);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return String(rawValue ?? "");
+}
+
+function getChannelLabel(channelKey) {
+  return CHANNEL_LABELS[channelKey] || channelKey;
+}
+
+function ensureChannelStoreFromConfig(scope, channelsConfig = {}) {
+  const store = {};
+  for (const key of CHANNEL_ORDER) {
+    const template = getChannelTemplate(key);
+    const current = channelsConfig && typeof channelsConfig === "object" ? channelsConfig[key] : null;
+    const values = {};
+    for (const [field, templateValue] of Object.entries(template)) {
+      if (field === "enabled" || field.startsWith("_")) {
+        continue;
+      }
+      const value =
+        current && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, field)
+          ? current[field]
+          : templateValue;
+      values[field] = normalizeChannelRawValue(value);
+    }
+    store[key] = values;
+  }
+  if (scope === "wizard") {
+    state.wizardChannelValues = store;
+  } else {
+    state.quickChannelValues = store;
+  }
+}
+
+function detectEnabledChannel(channelsConfig) {
+  for (const key of CHANNEL_ORDER) {
+    if (channelsConfig && channelsConfig[key] && channelsConfig[key].enabled === true) {
+      return key;
+    }
+  }
+  return "telegram";
+}
+
+function renderChannelPlatformOptions(scope, selectedKey = "telegram") {
+  const { platform } = getChannelElements(scope);
+  if (!platform) {
+    return;
+  }
+  const options = CHANNEL_ORDER.map((key) => ({
+    value: key,
+    label: getChannelLabel(key)
+  }));
+  setSelectOptions(platform, options, selectedKey);
+}
+
+function renderChannelFields(scope, channelKey) {
+  const { fields } = getChannelElements(scope);
+  if (!fields) {
+    return;
+  }
+  const store = getChannelStore(scope);
+  if (!store[channelKey]) {
+    store[channelKey] = {};
+  }
+
+  fields.innerHTML = "";
+  const entries = getChannelFieldEntries(channelKey);
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = t("channel_no_fields");
+    fields.appendChild(empty);
+    return;
+  }
+
+  for (const [field, templateValue] of entries) {
+    if (!Object.prototype.hasOwnProperty.call(store[channelKey], field)) {
+      store[channelKey][field] = normalizeChannelRawValue(templateValue);
+    }
+
+    const wrap = document.createElement("label");
+    wrap.className = "channel-field-item";
+
+    const title = document.createElement("span");
+    title.textContent = field;
+    wrap.appendChild(title);
+
+    if (typeof templateValue === "boolean") {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = Boolean(store[channelKey][field]);
+      input.addEventListener("change", () => {
+        store[channelKey][field] = input.checked;
+      });
+      wrap.appendChild(input);
+      fields.appendChild(wrap);
+      continue;
+    }
+
+    if (typeof templateValue === "number") {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "any";
+      input.value = String(store[channelKey][field] ?? "");
+      input.addEventListener("input", () => {
+        store[channelKey][field] = input.value;
+      });
+      wrap.appendChild(input);
+      fields.appendChild(wrap);
+      continue;
+    }
+
+    if (Array.isArray(templateValue) || (templateValue && typeof templateValue === "object")) {
+      const textarea = document.createElement("textarea");
+      textarea.value = String(store[channelKey][field] ?? "");
+      textarea.placeholder = t("placeholder_channel_json");
+      textarea.addEventListener("input", () => {
+        store[channelKey][field] = textarea.value;
+      });
+      wrap.appendChild(textarea);
+      fields.appendChild(wrap);
+      continue;
+    }
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = String(store[channelKey][field] ?? "");
+    input.addEventListener("input", () => {
+      store[channelKey][field] = input.value;
+    });
+    wrap.appendChild(input);
+    fields.appendChild(wrap);
+  }
+}
+
+function refreshChannelControlsLocale() {
+  const quickSelected = els.quickChannelPlatform?.value || "telegram";
+  renderChannelPlatformOptions("quick", quickSelected);
+  renderChannelFields("quick", els.quickChannelPlatform?.value || "telegram");
+
+  const wizardSelected = els.wizardChannelPlatform?.value || "telegram";
+  renderChannelPlatformOptions("wizard", wizardSelected);
+  renderChannelFields("wizard", els.wizardChannelPlatform?.value || "telegram");
+}
+
+function getTypedChannelValues(scope, channelKey) {
+  const store = getChannelStore(scope);
+  const rawValues = store[channelKey] && typeof store[channelKey] === "object" ? store[channelKey] : {};
+  const typed = {};
+  for (const [field, templateValue] of getChannelFieldEntries(channelKey)) {
+    const raw = Object.prototype.hasOwnProperty.call(rawValues, field)
+      ? rawValues[field]
+      : normalizeChannelRawValue(templateValue);
+    typed[field] = parseChannelTypedValue(raw, templateValue, field);
+  }
+  return typed;
+}
+
 function applyLocale() {
   const locale = getLocale();
   document.documentElement.lang = locale === "zh-CN" ? "zh-CN" : locale;
@@ -655,9 +880,8 @@ function applyLocale() {
   setText("quickModelNameLabel", t("model_name"));
   setText("quickApiBaseLabel", t("api_base"));
   setText("quickApiKeyLabel", t("api_key"));
-  setText("quickTelegramEnabledLabel", t("enable_telegram"));
-  setText("quickTelegramTokenLabel", t("telegram_token"));
-  setText("quickTelegramAllowFromLabel", t("allow_user_ids"));
+  setText("quickChannelPlatformLabel", t("channel_platform"));
+  setText("quickChannelConfigLabel", t("channel_config"));
   setText("saveQuickConfigBtn", t("save_quick_config"));
   setText("saveConfigBtn", t("save_full_config"));
   setText("refreshLogsBtn", t("refresh_logs"));
@@ -684,9 +908,8 @@ function applyLocale() {
   setText("wizardModelNameLabel", t("model_name"));
   setText("wizardApiBaseLabel", t("api_base"));
   setText("wizardApiKeyLabel", t("api_key"));
-  setText("wizardTelegramEnabledLabel", t("enable_telegram"));
-  setText("wizardTelegramTokenLabel", t("telegram_token"));
-  setText("wizardTelegramAllowFromLabel", t("allow_user_ids"));
+  setText("wizardChannelPlatformLabel", t("channel_platform"));
+  setText("wizardChannelConfigLabel", t("channel_config"));
   setText("wizardCancelBtn", t("wizard_cancel"));
   setText("wizardPrevBtn", t("wizard_back"));
   setText("wizardNextBtn", t("wizard_next"));
@@ -698,17 +921,11 @@ function applyLocale() {
   if (els.quickApiBase) {
     els.quickApiBase.placeholder = t("placeholder_api_base");
   }
-  if (els.quickTelegramAllowFrom) {
-    els.quickTelegramAllowFrom.placeholder = t("placeholder_allow_ids");
-  }
   if (els.wizardModelName) {
     els.wizardModelName.placeholder = t("placeholder_model_name");
   }
   if (els.wizardApiBase) {
     els.wizardApiBase.placeholder = t("placeholder_api_base");
-  }
-  if (els.wizardTelegramAllowFrom) {
-    els.wizardTelegramAllowFrom.placeholder = t("placeholder_allow_ids");
   }
 
   els.minimizeWindowBtn.title = t("win_minimize");
@@ -728,6 +945,7 @@ function applyLocale() {
   }
 
   refreshModelControlsLocale();
+  refreshChannelControlsLocale();
 
   renderSelectedTitle();
   renderAgentList();
@@ -788,21 +1006,6 @@ function fmtDate(value) {
     return value;
   }
   return d.toLocaleString();
-}
-
-function parseIdList(raw) {
-  const text = String(raw || "");
-  return text
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function stringifyIdList(list) {
-  if (!Array.isArray(list)) {
-    return "";
-  }
-  return list.map((item) => String(item)).join(", ");
 }
 
 function getSelectedAgent() {
@@ -1123,13 +1326,6 @@ function ensureConfigRoots(cfg) {
   if (!cfg.channels || typeof cfg.channels !== "object") {
     cfg.channels = {};
   }
-  if (!cfg.channels.telegram || typeof cfg.channels.telegram !== "object") {
-    cfg.channels.telegram = {
-      enabled: false,
-      token: "",
-      allow_from: []
-    };
-  }
   return cfg;
 }
 
@@ -1149,10 +1345,10 @@ function getQuickDataFromConfig(cfg, selected) {
   const defaults = safe.agents.defaults || {};
   const defaultAlias = String(defaults.model || "").trim() || "";
   const entry = findModelEntry(safe, defaultAlias) || {};
-  const telegram = safe.channels.telegram || {};
   const modelName = String(entry.model || defaultAlias || "").trim();
   const apiBase = String(entry.api_base || "").trim();
   const selection = detectModelSelection(modelName, apiBase);
+  const activeChannel = detectEnabledChannel(safe.channels || {});
 
   return {
     agentName: selected ? String(selected.meta.name || selected.id || "") : "",
@@ -1161,9 +1357,7 @@ function getQuickDataFromConfig(cfg, selected) {
     modelName,
     apiBase,
     apiKey: String(entry.api_key || ""),
-    telegramEnabled: Boolean(telegram.enabled),
-    telegramToken: String(telegram.token || ""),
-    telegramAllowFrom: stringifyIdList(telegram.allow_from)
+    channelPlatform: activeChannel
   };
 }
 
@@ -1176,9 +1370,9 @@ function renderQuickConfig() {
     els.quickApiBase.value = "";
     applyModelSelection("quick", { preserveCustomName: true });
     els.quickApiKey.value = "";
-    els.quickTelegramEnabled.checked = false;
-    els.quickTelegramToken.value = "";
-    els.quickTelegramAllowFrom.value = "";
+    ensureChannelStoreFromConfig("quick", {});
+    renderChannelPlatformOptions("quick", "telegram");
+    renderChannelFields("quick", "telegram");
     return;
   }
 
@@ -1189,12 +1383,14 @@ function renderQuickConfig() {
   els.quickApiBase.value = quick.apiBase;
   applyModelSelection("quick", { preserveCustomName: true });
   els.quickApiKey.value = quick.apiKey;
-  els.quickTelegramEnabled.checked = quick.telegramEnabled;
-  els.quickTelegramToken.value = quick.telegramToken;
-  els.quickTelegramAllowFrom.value = quick.telegramAllowFrom;
+  ensureChannelStoreFromConfig("quick", state.configDraft.channels || {});
+  renderChannelPlatformOptions("quick", quick.channelPlatform);
+  renderChannelFields("quick", quick.channelPlatform);
 }
 
 function getQuickDataFromInputs() {
+  const channelPlatform = String(els.quickChannelPlatform.value || "telegram");
+  const channelValues = getTypedChannelValues("quick", channelPlatform);
   return {
     agentName: String(els.quickAgentName.value || "").trim(),
     modelPlatform: String(els.quickModelPlatform.value || "").trim(),
@@ -1202,9 +1398,8 @@ function getQuickDataFromInputs() {
     modelName: String(els.quickModelName.value || "").trim(),
     apiBase: String(els.quickApiBase.value || "").trim(),
     apiKey: String(els.quickApiKey.value || "").trim(),
-    telegramEnabled: Boolean(els.quickTelegramEnabled.checked),
-    telegramToken: String(els.quickTelegramToken.value || "").trim(),
-    telegramAllowFrom: String(els.quickTelegramAllowFrom.value || "")
+    channelPlatform,
+    channelValues
   };
 }
 
@@ -1232,11 +1427,22 @@ function applyQuickDataToConfig(cfg, quick) {
   entry.api_key = quick.apiKey;
   safe.model_list[entryIndex] = entry;
 
-  const telegram = safe.channels.telegram || {};
-  telegram.enabled = Boolean(quick.telegramEnabled);
-  telegram.token = quick.telegramToken;
-  telegram.allow_from = parseIdList(quick.telegramAllowFrom);
-  safe.channels.telegram = telegram;
+  if (!safe.channels || typeof safe.channels !== "object") {
+    safe.channels = {};
+  }
+  const allChannelKeys = new Set([...CHANNEL_ORDER, ...Object.keys(safe.channels)]);
+  for (const key of allChannelKeys) {
+    const existing = safe.channels[key] && typeof safe.channels[key] === "object" ? safe.channels[key] : {};
+    safe.channels[key] = { ...existing, enabled: key === quick.channelPlatform };
+  }
+  const selectedChannel = quick.channelPlatform || "telegram";
+  const selectedExisting =
+    safe.channels[selectedChannel] && typeof safe.channels[selectedChannel] === "object" ? safe.channels[selectedChannel] : {};
+  safe.channels[selectedChannel] = {
+    ...selectedExisting,
+    enabled: true,
+    ...(quick.channelValues || {})
+  };
 
   return safe;
 }
@@ -1697,9 +1903,9 @@ function openCreateWizard() {
   els.wizardApiBase.value = "";
   applyModelSelection("wizard", { preserveCustomName: false });
   els.wizardApiKey.value = "";
-  els.wizardTelegramEnabled.checked = true;
-  els.wizardTelegramToken.value = "";
-  els.wizardTelegramAllowFrom.value = "";
+  ensureChannelStoreFromConfig("wizard", {});
+  renderChannelPlatformOptions("wizard", "telegram");
+  renderChannelFields("wizard", "telegram");
 
   setWizardStep(1);
   els.createWizardModal.classList.remove("hidden");
@@ -1715,6 +1921,8 @@ function closeCreateWizard() {
 }
 
 function collectWizardData() {
+  const channelPlatform = String(els.wizardChannelPlatform.value || "telegram");
+  const channelValues = getTypedChannelValues("wizard", channelPlatform);
   return {
     agentName: String(els.wizardAgentName.value || "").trim(),
     modelPlatform: String(els.wizardModelPlatform.value || "").trim(),
@@ -1722,14 +1930,19 @@ function collectWizardData() {
     modelName: String(els.wizardModelName.value || "").trim(),
     apiBase: String(els.wizardApiBase.value || "").trim(),
     apiKey: String(els.wizardApiKey.value || "").trim(),
-    telegramEnabled: Boolean(els.wizardTelegramEnabled.checked),
-    telegramToken: String(els.wizardTelegramToken.value || "").trim(),
-    telegramAllowFrom: String(els.wizardTelegramAllowFrom.value || "")
+    channelPlatform,
+    channelValues
   };
 }
 
 function validateWizardStep(step) {
-  const data = collectWizardData();
+  let data;
+  try {
+    data = collectWizardData();
+  } catch (error) {
+    showError(error);
+    return false;
+  }
 
   if (step === 1) {
     if (!data.agentName) {
@@ -1750,19 +1963,6 @@ function validateWizardStep(step) {
     if (!data.apiKey) {
       showInfo(t("wizard_req_api_key"));
       els.wizardApiKey.focus();
-      return false;
-    }
-  }
-
-  if (step === 2 && data.telegramEnabled) {
-    if (!data.telegramToken) {
-      showInfo(t("wizard_req_tg_token"));
-      els.wizardTelegramToken.focus();
-      return false;
-    }
-    if (parseIdList(data.telegramAllowFrom).length === 0) {
-      showInfo(t("wizard_req_tg_allow"));
-      els.wizardTelegramAllowFrom.focus();
       return false;
     }
   }
@@ -1843,6 +2043,14 @@ function bindEvents() {
   });
   els.wizardModelPreset.addEventListener("change", () => {
     applyModelSelection("wizard", { preserveCustomName: false });
+  });
+
+  els.quickChannelPlatform.addEventListener("change", () => {
+    renderChannelFields("quick", els.quickChannelPlatform.value || "telegram");
+  });
+
+  els.wizardChannelPlatform.addEventListener("change", () => {
+    renderChannelFields("wizard", els.wizardChannelPlatform.value || "telegram");
   });
 
   els.createAgentBtn.addEventListener("click", () => openCreateWizard());
@@ -2042,6 +2250,8 @@ async function boot() {
   bindEvents();
   state.appInfo = await api.init();
   state.modelCatalog = normalizeModelCatalog(state.appInfo?.modelCatalog || []);
+  state.defaultConfig =
+    state.appInfo?.defaultConfig && typeof state.appInfo.defaultConfig === "object" ? state.appInfo.defaultConfig : {};
   if (state.appInfo && state.appInfo.settings) {
     state.settings = {
       closeBehavior: state.appInfo.settings.closeBehavior || "ask",
@@ -2052,6 +2262,12 @@ async function boot() {
   renderModelSelectors("wizard");
   applyModelSelection("quick", { preserveCustomName: true });
   applyModelSelection("wizard", { preserveCustomName: true });
+  ensureChannelStoreFromConfig("quick", {});
+  ensureChannelStoreFromConfig("wizard", {});
+  renderChannelPlatformOptions("quick", "telegram");
+  renderChannelPlatformOptions("wizard", "telegram");
+  renderChannelFields("quick", "telegram");
+  renderChannelFields("wizard", "telegram");
   renderRuntimeInfo();
   await loadSettings();
   setConfigView("quick");

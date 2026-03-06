@@ -692,9 +692,34 @@ button {
   font-weight: 600;
 }
 
+.quick-field-full {
+  grid-column: 1 / -1;
+}
+
 .quick-field-checkbox {
   grid-template-columns: 1fr auto;
   align-items: center;
+}
+
+.channel-fields {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(196, 150, 23, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 252, 238, 0.92);
+  padding: 10px;
+}
+
+.channel-field-item {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.channel-field-item textarea {
+  min-height: 90px;
+  resize: vertical;
 }
 
 .wizard-mask {

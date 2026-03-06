@@ -106,18 +106,14 @@
                   <span id="quickApiKeyLabel">API Key</span>
                   <input id="quickApiKey" type="text" />
                 </label>
-                <label class="quick-field quick-field-checkbox">
-                  <span id="quickTelegramEnabledLabel">Enable Telegram</span>
-                  <input id="quickTelegramEnabled" type="checkbox" />
-                </label>
                 <label class="quick-field">
-                  <span id="quickTelegramTokenLabel">Telegram Bot Token</span>
-                  <input id="quickTelegramToken" type="text" />
+                  <span id="quickChannelPlatformLabel">Channel Platform</span>
+                  <select id="quickChannelPlatform"></select>
                 </label>
-                <label class="quick-field">
-                  <span id="quickTelegramAllowFromLabel">Allowed User IDs (comma separated)</span>
-                  <input id="quickTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
-                </label>
+                <div class="quick-field quick-field-full">
+                  <span id="quickChannelConfigLabel">Channel Config</span>
+                  <div id="quickChannelFields" class="channel-fields"></div>
+                </div>
               </div>
                 <div class="pane-toolbar">
                   <button id="saveQuickConfigBtn" class="btn btn-primary">Save Quick Config</button>
@@ -223,18 +219,14 @@
         </div>
 
         <div id="wizardStep2" class="wizard-step">
-          <label class="quick-field quick-field-checkbox">
-            <span id="wizardTelegramEnabledLabel">Enable Telegram</span>
-            <input id="wizardTelegramEnabled" type="checkbox" checked />
-          </label>
           <label class="quick-field">
-            <span id="wizardTelegramTokenLabel">Telegram Bot Token</span>
-            <input id="wizardTelegramToken" type="text" />
+            <span id="wizardChannelPlatformLabel">Channel Platform</span>
+            <select id="wizardChannelPlatform"></select>
           </label>
-          <label class="quick-field">
-            <span id="wizardTelegramAllowFromLabel">Allowed User IDs (comma separated)</span>
-            <input id="wizardTelegramAllowFrom" type="text" placeholder="e.g. 123456789, 987654321" />
-          </label>
+          <div class="quick-field quick-field-full">
+            <span id="wizardChannelConfigLabel">Channel Config</span>
+            <div id="wizardChannelFields" class="channel-fields"></div>
+          </div>
         </div>
 
         <div class="wizard-actions">
