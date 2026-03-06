@@ -78,13 +78,19 @@ body {
 }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  object-fit: cover;
+  width: 88px;
+  height: 88px;
+  padding: 8px;
+  border-radius: 50%;
+  display: block;
+  object-fit: contain;
   border: 1px solid rgba(196, 150, 23, 0.32);
   box-shadow: 0 6px 14px rgba(213, 166, 42, 0.35);
   background: rgba(255, 250, 232, 0.92);
+  image-rendering: auto;
+  -ms-interpolation-mode: bicubic;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .brand-wrap h1 {
