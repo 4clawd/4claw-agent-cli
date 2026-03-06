@@ -25,7 +25,6 @@ const els = {
   refreshAgentsBtn: document.getElementById("refreshAgentsBtn"),
   agentList: document.getElementById("agentList"),
   selectedAgentTitle: document.getElementById("selectedAgentTitle"),
-  renameAgentBtn: document.getElementById("renameAgentBtn"),
   openAgentFolderBtn: document.getElementById("openAgentFolderBtn"),
   deleteAgentBtn: document.getElementById("deleteAgentBtn"),
   tabs: Array.from(document.querySelectorAll("nav.tabs .tab-btn[data-tab]")),
@@ -634,7 +633,6 @@ function applyLocale() {
   setText("createAgentBtn", t("create_agent_wizard"));
   setText("importBackupBtn", t("import_backup"));
   setText("refreshAgentsBtn", t("refresh"));
-  setText("renameAgentBtn", t("rename"));
   setText("openAgentFolderBtn", t("open_folder"));
   setText("deleteAgentBtn", t("delete"));
   setText("tabDashboardBtn", t("tab_dashboard"));
@@ -1846,25 +1844,6 @@ function bindEvents() {
   els.refreshAgentsBtn.addEventListener("click", async () => {
     try {
       await refreshAgents(true);
-    } catch (error) {
-      showError(error);
-    }
-  });
-
-  els.renameAgentBtn.addEventListener("click", async () => {
-    const selected = ensureSelectedAgent();
-    if (!selected) {
-      return;
-    }
-    const name = window.prompt(t("prompt_new_agent_name"), selected.meta.name || selected.id);
-    if (name === null) {
-      return;
-    }
-    try {
-      await api.renameAgent(selected.id, name);
-      await refreshAgents(true);
-      renderSelectedTitle();
-      renderQuickConfig();
     } catch (error) {
       showError(error);
     }
