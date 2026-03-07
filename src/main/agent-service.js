@@ -8,12 +8,19 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+function stripUtf8Bom(text) {
+  if (typeof text !== "string") {
+    return "";
+  }
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 function readJson(filePath, fallback = null) {
   if (!fs.existsSync(filePath)) {
     return fallback;
   }
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return JSON.parse(stripUtf8Bom(fs.readFileSync(filePath, "utf8")));
   } catch {
     return fallback;
   }
@@ -37,6 +44,10 @@ function platformBinaryName() {
     return process.arch === "arm64" ? "4claw-darwin-arm64" : "4claw-darwin-amd64";
   }
   return process.arch === "arm64" ? "4claw-linux-arm64" : "4claw-linux-amd64";
+}
+
+function authStorePath() {
+  return path.join(os.homedir(), ".4claw", "auth.json");
 }
 
 class AgentService {
@@ -82,6 +93,123 @@ class AgentService {
     };
   }
 
+  runBinaryCommand(args, { cwd = this.paths.root, timeoutMs = 10 * 60 * 1000 } = {}) {
+    const binary = this.resolveBinaryPath();
+    if (!binary.found) {
+      throw new Error(`4claw executable not found: ${binary.binaryName}`);
+    }
+
+    return new Promise((resolve, reject) => {
+      const child = spawn(binary.resolvedPath, args, {
+        cwd,
+        windowsHide: true
+      });
+
+      let stdout = "";
+      let stderr = "";
+      let finished = false;
+      let timer = null;
+
+      const finish = (handler) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        if (timer) {
+          clearTimeout(timer);
+        }
+        handler();
+      };
+
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          try {
+            child.kill("SIGTERM");
+          } catch {}
+          finish(() => reject(new Error(`4claw command timed out after ${timeoutMs}ms`)));
+        }, timeoutMs);
+      }
+
+      child.stdout.on("data", (chunk) => {
+        stdout += String(chunk);
+      });
+
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+
+      child.on("error", (error) => {
+        finish(() => reject(error));
+      });
+
+      child.on("close", (code, signal) => {
+        if (code === 0) {
+          finish(() =>
+            resolve({
+              code,
+              signal: signal || null,
+              stdout,
+              stderr
+            })
+          );
+          return;
+        }
+        finish(() => {
+          const message = (stderr || stdout || `4claw exited with code ${code}`).trim();
+          reject(new Error(message));
+        });
+      });
+    });
+  }
+
+  getAuthStatus() {
+    const store = readJson(authStorePath(), { credentials: {} }) || { credentials: {} };
+    const credentials =
+      store && store.credentials && typeof store.credentials === "object" ? store.credentials : {};
+
+    const providers = {};
+    for (const [provider, cred] of Object.entries(credentials)) {
+      const expiresAt = cred?.expires_at ? new Date(cred.expires_at) : null;
+      const now = Date.now();
+      let status = "available";
+      if (expiresAt && !Number.isNaN(expiresAt.getTime())) {
+        if (expiresAt.getTime() <= now) {
+          status = "expired";
+        } else if (expiresAt.getTime() <= now + 5 * 60 * 1000) {
+          status = "needs_refresh";
+        }
+      }
+
+      providers[provider] = {
+        provider,
+        authMethod: String(cred?.auth_method || ""),
+        accountId: String(cred?.account_id || ""),
+        email: String(cred?.email || ""),
+        projectId: String(cred?.project_id || ""),
+        expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt.toISOString() : "",
+        status
+      };
+    }
+
+    return {
+      filePath: authStorePath(),
+      providers
+    };
+  }
+
+  async loginWithOAuth(provider) {
+    const normalizedProvider = String(provider || "").trim();
+    if (!normalizedProvider) {
+      throw new Error("OAuth provider is required");
+    }
+
+    const result = await this.runBinaryCommand(["auth", "login", "--provider", normalizedProvider]);
+    return {
+      ...result,
+      authStatus: this.getAuthStatus()
+    };
+  }
+
   templateConfigPath() {
     const candidates = [
       path.join(this.app.getAppPath(), "assets", "default-config.json"),
@@ -96,7 +224,7 @@ class AgentService {
     if (!configPath) {
       throw new Error("未找到 default-config.json，请检查 assets/default-config.json");
     }
-    return JSON.parse(fs.readFileSync(configPath, "utf8"));
+    return JSON.parse(stripUtf8Bom(fs.readFileSync(configPath, "utf8")));
   }
 
   listAgents() {

@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld("clawApi", {
   init: () => ipcRenderer.invoke("app:init"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (patch) => ipcRenderer.invoke("settings:save", patch),
+  getAuthStatus: () => ipcRenderer.invoke("auth:status"),
+  authLogin: (provider) => ipcRenderer.invoke("auth:login", provider),
   listAgents: () => ipcRenderer.invoke("agents:list"),
   createAgent: (name) => ipcRenderer.invoke("agents:create", name),
   renameAgent: (id, name) => ipcRenderer.invoke("agents:rename", id, name),

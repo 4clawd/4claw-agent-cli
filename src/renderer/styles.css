@@ -696,9 +696,27 @@ button {
   grid-column: 1 / -1;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .quick-field-checkbox {
   grid-template-columns: 1fr auto;
   align-items: center;
+}
+
+.auth-panel {
+  border: 1px solid rgba(196, 150, 23, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 250, 228, 0.92);
+  padding: 10px;
+}
+
+.auth-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
 .channel-fields {

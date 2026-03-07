@@ -134,6 +134,13 @@ function resolveIconPath(candidates) {
   return "";
 }
 
+function stripUtf8Bom(text) {
+  if (typeof text !== "string") {
+    return "";
+  }
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 function loadModelCatalog() {
   const candidates = [
     path.join(app.getAppPath(), "src", "models.json"),
@@ -144,7 +151,7 @@ function loadModelCatalog() {
     return [];
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const parsed = JSON.parse(stripUtf8Bom(fs.readFileSync(filePath, "utf8")));
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -161,7 +168,7 @@ function loadDefaultConfigTemplate() {
     return {};
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const parsed = JSON.parse(stripUtf8Bom(fs.readFileSync(filePath, "utf8")));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
@@ -350,6 +357,8 @@ function setupIpc() {
 
   ipcMain.handle("settings:get", () => appSettings);
   ipcMain.handle("settings:save", (_event, patch) => saveSettings(patch));
+  ipcMain.handle("auth:status", () => agentService.getAuthStatus());
+  ipcMain.handle("auth:login", (_event, provider) => agentService.loginWithOAuth(provider));
 
   ipcMain.handle("agents:list", () => agentService.listAgents());
   ipcMain.handle("agents:create", (_event, name) => agentService.createAgent(name));

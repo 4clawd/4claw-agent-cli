@@ -103,9 +103,20 @@
                   <input id="quickApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
                 </label>
                 <label class="quick-field">
+                  <span id="quickAuthMethodLabel">Auth Method</span>
+                  <select id="quickAuthMethod"></select>
+                </label>
+                <label class="quick-field">
                   <span id="quickApiKeyLabel">API Key</span>
                   <input id="quickApiKey" type="text" />
                 </label>
+                <div id="quickOAuthPanel" class="quick-field quick-field-full auth-panel hidden">
+                  <div class="auth-panel-head">
+                    <span id="quickOAuthStatusLabel">OAuth Status</span>
+                    <span id="quickOAuthStatus" class="status-badge">Not authenticated</span>
+                  </div>
+                  <button id="quickOAuthLoginBtn" class="btn btn-soft" type="button">OAuth Login</button>
+                </div>
                 <label class="quick-field">
                   <span id="quickChannelPlatformLabel">Channel Platform</span>
                   <select id="quickChannelPlatform"></select>
@@ -213,9 +224,20 @@
             <input id="wizardApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
           </label>
           <label class="quick-field">
+            <span id="wizardAuthMethodLabel">Auth Method</span>
+            <select id="wizardAuthMethod"></select>
+          </label>
+          <label class="quick-field">
             <span id="wizardApiKeyLabel">API Key</span>
             <input id="wizardApiKey" type="text" />
           </label>
+          <div id="wizardOAuthPanel" class="quick-field quick-field-full auth-panel hidden">
+            <div class="auth-panel-head">
+              <span id="wizardOAuthStatusLabel">OAuth Status</span>
+              <span id="wizardOAuthStatus" class="status-badge">Not authenticated</span>
+            </div>
+            <button id="wizardOAuthLoginBtn" class="btn btn-soft" type="button">OAuth Login</button>
+          </div>
         </div>
 
         <div id="wizardStep2" class="wizard-step">

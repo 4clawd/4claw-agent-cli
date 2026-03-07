@@ -1,18 +1,30 @@
 [
-    {
-    "name":"OpenAI",
-    "models":[
-        "gpt-3.5",
-        "gpt-4o",
-        "gpt-5",
-        "gpt-5.3-codex",
-        "gpt-5-nano"
-    ],
-    "base_url":"https://api.openai.com/v1",
-    "support_oath":true
-},
   {
-    "name": "gemini",
+    "name": "OpenAI",
+    "key": "openai",
+    "protocol": "openai",
+    "models": [
+      "gpt-3.5",
+      "gpt-4o",
+      "gpt-5",
+      "gpt-5.3-codex",
+      "gpt-5-nano"
+    ],
+    "base_url": "https://api.openai.com/v1",
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": true,
+        "provider": "openai",
+        "model_protocol": "openai",
+        "auth_method": "oauth"
+      }
+    }
+  },
+  {
+    "name": "Gemini",
+    "key": "gemini",
+    "protocol": "gemini",
     "models": [
       "gemini-1.5-flash",
       "gemini-1.5-pro",
@@ -20,10 +32,20 @@
       "gemini-2.0-pro"
     ],
     "base_url": "https://generativelanguage.googleapis.com/v1beta",
-    "support_oath": true
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": true,
+        "provider": "google-antigravity",
+        "model_protocol": "antigravity",
+        "auth_method": "oauth"
+      }
+    }
   },
   {
-    "name": "claude",
+    "name": "Claude",
+    "key": "claude",
+    "protocol": "anthropic",
     "models": [
       "claude-3-haiku",
       "claude-3-sonnet",
@@ -31,20 +53,40 @@
       "claude-3.5-sonnet"
     ],
     "base_url": "https://api.anthropic.com/v1",
-    "support_oath": false
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": false,
+        "provider": "anthropic",
+        "model_protocol": "anthropic",
+        "auth_method": "token"
+      }
+    }
   },
   {
-    "name": "deepseek",
+    "name": "DeepSeek",
+    "key": "deepseek",
+    "protocol": "deepseek",
     "models": [
       "deepseek-chat",
       "deepseek-coder",
       "deepseek-reasoner"
     ],
     "base_url": "https://api.deepseek.com/v1",
-    "support_oath": false
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": false,
+        "provider": "",
+        "model_protocol": "deepseek",
+        "auth_method": ""
+      }
+    }
   },
   {
-    "name": "minimax",
+    "name": "MiniMax",
+    "key": "minimax",
+    "protocol": "openai",
     "models": [
       "MiniMax-M2",
       "MiniMax-M2.1",
@@ -54,10 +96,20 @@
       "MiniMax-M2.5-highspeed"
     ],
     "base_url": "https://api.minimax.chat/v1",
-    "support_oath": true
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": false,
+        "provider": "",
+        "model_protocol": "openai",
+        "auth_method": ""
+      }
+    }
   },
   {
-    "name": "qwen",
+    "name": "Qwen",
+    "key": "qwen",
+    "protocol": "qwen",
     "models": [
       "qwen-turbo",
       "qwen-plus",
@@ -66,16 +118,34 @@
       "qwen2.5-7b-instruct"
     ],
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "support_oath": true
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": false,
+        "provider": "",
+        "model_protocol": "qwen",
+        "auth_method": ""
+      }
+    }
   },
   {
-    "name": "glm",
+    "name": "GLM",
+    "key": "glm",
+    "protocol": "zhipu",
     "models": [
       "glm-4",
       "glm-4-air",
       "glm-4-flash"
     ],
     "base_url": "https://open.bigmodel.cn/api/paas/v4",
-    "support_oath": true
+    "auth": {
+      "api_key": true,
+      "oauth": {
+        "enabled": false,
+        "provider": "",
+        "model_protocol": "zhipu",
+        "auth_method": ""
+      }
+    }
   }
 ]

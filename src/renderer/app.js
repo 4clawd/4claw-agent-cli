@@ -16,6 +16,9 @@ const state = {
     closeBehavior: "ask",
     language: "en"
   },
+  authStatus: {
+    providers: {}
+  },
   quickChannelValues: {},
   wizardChannelValues: {}
 };
@@ -50,7 +53,11 @@ const els = {
   quickModelPreset: document.getElementById("quickModelPreset"),
   quickModelName: document.getElementById("quickModelName"),
   quickApiBase: document.getElementById("quickApiBase"),
+  quickAuthMethod: document.getElementById("quickAuthMethod"),
   quickApiKey: document.getElementById("quickApiKey"),
+  quickOAuthPanel: document.getElementById("quickOAuthPanel"),
+  quickOAuthStatus: document.getElementById("quickOAuthStatus"),
+  quickOAuthLoginBtn: document.getElementById("quickOAuthLoginBtn"),
   quickChannelPlatform: document.getElementById("quickChannelPlatform"),
   quickChannelFields: document.getElementById("quickChannelFields"),
   saveQuickConfigBtn: document.getElementById("saveQuickConfigBtn"),
@@ -75,7 +82,11 @@ const els = {
   wizardModelPreset: document.getElementById("wizardModelPreset"),
   wizardModelName: document.getElementById("wizardModelName"),
   wizardApiBase: document.getElementById("wizardApiBase"),
+  wizardAuthMethod: document.getElementById("wizardAuthMethod"),
   wizardApiKey: document.getElementById("wizardApiKey"),
+  wizardOAuthPanel: document.getElementById("wizardOAuthPanel"),
+  wizardOAuthStatus: document.getElementById("wizardOAuthStatus"),
+  wizardOAuthLoginBtn: document.getElementById("wizardOAuthLoginBtn"),
   wizardChannelPlatform: document.getElementById("wizardChannelPlatform"),
   wizardChannelFields: document.getElementById("wizardChannelFields"),
   wizardCancelBtn: document.getElementById("wizardCancelBtn"),
@@ -92,6 +103,8 @@ const wizardState = {
 
 let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
+const AUTH_MODE_API_KEY = "api_key";
+const AUTH_MODE_OAUTH = "oauth";
 const CUSTOMER_PLATFORM = "__customer_platform__";
 const CUSTOMER_MODEL = "__customer_model__";
 const CHANNEL_ORDER = ["telegram", "discord", "qq", "whatsapp", "feishu", "dingtalk", "slack", "line"];
@@ -135,11 +148,23 @@ const I18N = {
     model_customer: "customer",
     model_name: "Model Name",
     api_base: "API Base",
+    auth_method: "Auth Method",
+    auth_method_api_key: "API Key",
+    auth_method_oauth: "OAuth",
     api_key: "API Key",
+    oauth_status: "OAuth Status",
+    oauth_login: "OAuth Login",
+    oauth_authenticated: "Authenticated",
+    oauth_not_authenticated: "Not authenticated",
+    oauth_needs_refresh: "Needs refresh",
+    oauth_expired: "Expired",
+    oauth_login_browser: "A browser window should open to complete OAuth login.",
+    oauth_login_success: "OAuth login completed.",
+    oauth_login_required: "Complete OAuth login before continuing.",
     channel_platform: "Channel Platform",
     channel_config: "Channel Config",
     channel_no_fields: "No configurable fields in default-config for this platform.",
-    placeholder_model_name: "e.g. openai/gpt-5.2",
+    placeholder_model_name: "e.g. gpt-5",
     placeholder_api_base: "e.g. https://api.openai.com/v1",
     placeholder_channel_json: "Use JSON format",
     placeholder_array_item: "Enter item",
@@ -252,11 +277,23 @@ const I18N = {
     model_customer: "customer（自定义）",
     model_name: "模型名称",
     api_base: "API 地址",
+    auth_method: "鉴权方式",
+    auth_method_api_key: "API Key",
+    auth_method_oauth: "OAuth",
     api_key: "API Key",
+    oauth_status: "OAuth 状态",
+    oauth_login: "OAuth 登录",
+    oauth_authenticated: "已认证",
+    oauth_not_authenticated: "未认证",
+    oauth_needs_refresh: "即将刷新",
+    oauth_expired: "已过期",
+    oauth_login_browser: "将打开浏览器完成 OAuth 登录。",
+    oauth_login_success: "OAuth 登录已完成。",
+    oauth_login_required: "请先完成 OAuth 登录。",
     channel_platform: "通讯平台",
     channel_config: "平台配置",
     channel_no_fields: "该平台在 default-config 中没有可配置字段。",
-    placeholder_model_name: "例如 openai/gpt-5.2",
+    placeholder_model_name: "例如 gpt-5",
     placeholder_api_base: "例如 https://api.openai.com/v1",
     placeholder_channel_json: "请使用 JSON 格式",
     placeholder_array_item: "填写一项内容",
@@ -369,11 +406,23 @@ const I18N = {
     model_customer: "customer",
     model_name: "Имя модели",
     api_base: "API Base",
+    auth_method: "Метод авторизации",
+    auth_method_api_key: "API Key",
+    auth_method_oauth: "OAuth",
     api_key: "API Key",
+    oauth_status: "Статус OAuth",
+    oauth_login: "Войти через OAuth",
+    oauth_authenticated: "Авторизовано",
+    oauth_not_authenticated: "Не авторизовано",
+    oauth_needs_refresh: "Требует обновления",
+    oauth_expired: "Срок истек",
+    oauth_login_browser: "Для завершения OAuth-авторизации должно открыться окно браузера.",
+    oauth_login_success: "OAuth-авторизация завершена.",
+    oauth_login_required: "Сначала завершите OAuth-авторизацию.",
     channel_platform: "Платформа связи",
     channel_config: "Конфиг платформы",
     channel_no_fields: "Для этой платформы нет настраиваемых полей в default-config.",
-    placeholder_model_name: "например openai/gpt-5.2",
+    placeholder_model_name: "например gpt-5",
     placeholder_api_base: "например https://api.openai.com/v1",
     placeholder_channel_json: "Используйте формат JSON",
     placeholder_array_item: "Введите элемент",
@@ -490,15 +539,28 @@ function normalizeModelCatalog(raw) {
   return raw
     .map((item, index) => {
       const displayName = String(item?.name || "").trim();
-      const id = displayName ? displayName.toLowerCase() : `platform-${index + 1}`;
+      const id = String(item?.key || displayName || `platform-${index + 1}`)
+        .trim()
+        .toLowerCase();
       const models = Array.isArray(item?.models)
         ? item.models.map((m) => String(m || "").trim()).filter(Boolean)
         : [];
+      const oauth = item?.auth?.oauth && typeof item.auth.oauth === "object" ? item.auth.oauth : {};
       return {
         id,
         name: displayName || `Platform ${index + 1}`,
         baseUrl: String(item?.base_url || "").trim(),
-        models
+        protocol: String(item?.protocol || item?.key || id || "openai").trim().toLowerCase() || "openai",
+        models,
+        auth: {
+          apiKey: item?.auth?.api_key !== false,
+          oauth: {
+            enabled: Boolean(oauth.enabled),
+            provider: String(oauth.provider || "").trim(),
+            modelProtocol: String(oauth.model_protocol || "").trim().toLowerCase(),
+            authMethod: String(oauth.auth_method || AUTH_MODE_OAUTH).trim() || AUTH_MODE_OAUTH
+          }
+        }
       };
     })
     .filter((item) => item.name);
@@ -514,15 +576,148 @@ function getModelFormElements(scope) {
       platform: els.wizardModelPlatform,
       preset: els.wizardModelPreset,
       modelName: els.wizardModelName,
-      apiBase: els.wizardApiBase
+      apiBase: els.wizardApiBase,
+      authMethod: els.wizardAuthMethod,
+      apiKey: els.wizardApiKey,
+      oauthPanel: els.wizardOAuthPanel,
+      oauthStatus: els.wizardOAuthStatus,
+      oauthLoginBtn: els.wizardOAuthLoginBtn
     };
   }
   return {
     platform: els.quickModelPlatform,
     preset: els.quickModelPreset,
     modelName: els.quickModelName,
-    apiBase: els.quickApiBase
+    apiBase: els.quickApiBase,
+    authMethod: els.quickAuthMethod,
+    apiKey: els.quickApiKey,
+    oauthPanel: els.quickOAuthPanel,
+    oauthStatus: els.quickOAuthStatus,
+    oauthLoginBtn: els.quickOAuthLoginBtn
   };
+}
+
+function parseConfiguredModel(modelValue) {
+  const raw = String(modelValue || "").trim();
+  if (!raw) {
+    return { raw: "", protocol: "", modelId: "", hasPrefix: false };
+  }
+  const [protocol, modelId] = raw.split("/", 2);
+  if (!modelId) {
+    return { raw, protocol: "", modelId: raw, hasPrefix: false };
+  }
+  return { raw, protocol: protocol.toLowerCase(), modelId, hasPrefix: true };
+}
+
+function getOAuthMetadata(platform) {
+  return platform?.auth?.oauth && platform.auth.oauth.enabled ? platform.auth.oauth : null;
+}
+
+function platformSupportsOAuth(platformId) {
+  const platform = getPlatformById(platformId);
+  return Boolean(getOAuthMetadata(platform));
+}
+
+function getPlatformProtocols(platform) {
+  const protocols = new Set();
+  if (platform?.protocol) {
+    protocols.add(platform.protocol);
+  }
+  const oauth = getOAuthMetadata(platform);
+  if (oauth?.modelProtocol) {
+    protocols.add(oauth.modelProtocol);
+  }
+  return protocols;
+}
+
+function buildConfigModelValue(platformId, modelName, authMode) {
+  const normalizedModel = String(modelName || "").trim();
+  if (!normalizedModel) {
+    return "";
+  }
+  if (normalizedModel.includes("/")) {
+    return normalizedModel;
+  }
+  const platform = getPlatformById(platformId);
+  if (!platform) {
+    return normalizedModel;
+  }
+  const oauth = getOAuthMetadata(platform);
+  const protocol =
+    authMode === AUTH_MODE_OAUTH && oauth?.modelProtocol ? oauth.modelProtocol : platform.protocol || "openai";
+  return `${protocol}/${normalizedModel}`;
+}
+
+function getProviderAuthEntry(provider) {
+  const normalizedProvider = String(provider || "").trim();
+  if (!normalizedProvider) {
+    return null;
+  }
+  return state.authStatus?.providers?.[normalizedProvider] || null;
+}
+
+function getAuthStatusText(status) {
+  switch (status) {
+    case "expired":
+      return t("oauth_expired");
+    case "needs_refresh":
+      return t("oauth_needs_refresh");
+    case "available":
+      return t("oauth_authenticated");
+    default:
+      return t("oauth_not_authenticated");
+  }
+}
+
+function refreshOAuthStatusBadge(scope) {
+  const form = getModelFormElements(scope);
+  if (!form.oauthStatus || !form.platform) {
+    return;
+  }
+  const platform = getPlatformById(form.platform.value || "");
+  const oauth = getOAuthMetadata(platform);
+  const entry = oauth ? getProviderAuthEntry(oauth.provider) : null;
+  form.oauthStatus.textContent = getAuthStatusText(entry?.status || "");
+}
+
+function renderAuthMethodOptions(scope, desiredMode = "") {
+  const form = getModelFormElements(scope);
+  if (!form.authMethod || !form.platform) {
+    return;
+  }
+
+  const platformId = form.platform.value || CUSTOMER_PLATFORM;
+  const platform = getPlatformById(platformId);
+  const options = [
+    { value: AUTH_MODE_API_KEY, label: t("auth_method_api_key") }
+  ];
+  if (getOAuthMetadata(platform)) {
+    options.push({ value: AUTH_MODE_OAUTH, label: t("auth_method_oauth") });
+  }
+  const preferredMode =
+    desiredMode === AUTH_MODE_OAUTH && options.some((item) => item.value === AUTH_MODE_OAUTH)
+      ? desiredMode
+      : AUTH_MODE_API_KEY;
+  setSelectOptions(form.authMethod, options, preferredMode);
+}
+
+function applyAuthMethodSelection(scope) {
+  const form = getModelFormElements(scope);
+  if (!form.authMethod || !form.apiKey || !form.oauthPanel || !form.platform) {
+    return;
+  }
+
+  const platform = getPlatformById(form.platform.value || "");
+  const oauth = getOAuthMetadata(platform);
+  const isOAuth = form.authMethod.value === AUTH_MODE_OAUTH && Boolean(oauth);
+
+  form.apiKey.disabled = isOAuth;
+  form.apiKey.closest(".quick-field")?.classList.toggle("hidden", isOAuth);
+  form.oauthPanel.classList.toggle("hidden", !isOAuth);
+  if (form.oauthLoginBtn) {
+    form.oauthLoginBtn.disabled = !oauth;
+  }
+  refreshOAuthStatusBadge(scope);
 }
 
 function setSelectOptions(selectEl, options, selectedValue) {
@@ -579,9 +774,10 @@ function renderModelSelectors(scope, desiredPlatformId = "", desiredPreset = "")
   const fallbackPreset = modelOptions[0]?.value || CUSTOMER_MODEL;
   const presetValue = modelOptions.some((item) => item.value === desiredPreset) ? desiredPreset : fallbackPreset;
   setSelectOptions(form.preset, modelOptions, presetValue);
+  renderAuthMethodOptions(scope);
 }
 
-function applyModelSelection(scope, { preserveCustomName = false } = {}) {
+function applyModelSelection(scope, { preserveCustomName = false, preserveAuthMode = false } = {}) {
   const form = getModelFormElements(scope);
   if (!form.platform || !form.preset || !form.modelName || !form.apiBase) {
     return;
@@ -590,6 +786,7 @@ function applyModelSelection(scope, { preserveCustomName = false } = {}) {
   const platformId = form.platform.value || CUSTOMER_PLATFORM;
   const preset = form.preset.value || CUSTOMER_MODEL;
   const platform = getPlatformById(platformId);
+  const prevAuthMode = form.authMethod?.value || AUTH_MODE_API_KEY;
 
   if (!platform || platformId === CUSTOMER_PLATFORM) {
     form.apiBase.readOnly = false;
@@ -598,6 +795,8 @@ function applyModelSelection(scope, { preserveCustomName = false } = {}) {
       form.apiBase.value = "";
       form.modelName.value = "";
     }
+    renderAuthMethodOptions(scope, AUTH_MODE_API_KEY);
+    applyAuthMethodSelection(scope);
     return;
   }
 
@@ -609,38 +808,83 @@ function applyModelSelection(scope, { preserveCustomName = false } = {}) {
     if (!preserveCustomName) {
       form.modelName.value = "";
     }
-    return;
+  } else {
+    form.modelName.value = preset;
+    form.modelName.readOnly = true;
   }
 
-  form.modelName.value = preset;
-  form.modelName.readOnly = true;
+  renderAuthMethodOptions(scope, preserveAuthMode ? prevAuthMode : AUTH_MODE_API_KEY);
+  applyAuthMethodSelection(scope);
 }
 
-function detectModelSelection(modelName, apiBase) {
-  const name = String(modelName || "").trim();
+function detectModelSelection(modelName, apiBase, authMethod = "") {
+  const parsed = parseConfiguredModel(modelName);
+  const name = parsed.modelId;
   const base = String(apiBase || "").trim();
+
+  let protocolMatch = null;
+  let baseMatch = null;
+  let nameOnlyMatch = null;
   for (const platform of state.modelCatalog) {
-    if (!platform.baseUrl || platform.baseUrl !== base) {
-      continue;
+    const supportsProtocol = getPlatformProtocols(platform).has(parsed.protocol);
+    const sameBase = Boolean(base && platform.baseUrl && platform.baseUrl === base);
+    const sameModel = platform.models.includes(name);
+
+    if (sameBase && sameModel) {
+      return {
+        platformId: platform.id,
+        modelPreset: name,
+        authMode: authMethod === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : AUTH_MODE_API_KEY
+      };
     }
-    if (platform.models.includes(name)) {
-      return { platformId: platform.id, modelPreset: name };
+    if (sameBase) {
+      baseMatch = { platformId: platform.id, modelPreset: CUSTOMER_MODEL };
     }
-    return { platformId: platform.id, modelPreset: CUSTOMER_MODEL };
+    if (!parsed.protocol && sameModel && !nameOnlyMatch) {
+      nameOnlyMatch = {
+        platformId: platform.id,
+        modelPreset: name,
+        authMode: authMethod === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : AUTH_MODE_API_KEY
+      };
+    }
+    if (supportsProtocol && sameModel) {
+      protocolMatch = {
+        platformId: platform.id,
+        modelPreset: name,
+        authMode: authMethod === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : AUTH_MODE_API_KEY
+      };
+    } else if (supportsProtocol && !protocolMatch) {
+      protocolMatch = {
+        platformId: platform.id,
+        modelPreset: CUSTOMER_MODEL,
+        authMode: authMethod === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : AUTH_MODE_API_KEY
+      };
+    }
   }
-  return { platformId: CUSTOMER_PLATFORM, modelPreset: CUSTOMER_MODEL };
+  if (protocolMatch) {
+    return protocolMatch;
+  }
+  if (baseMatch) {
+    return { ...baseMatch, authMode: AUTH_MODE_API_KEY };
+  }
+  if (nameOnlyMatch) {
+    return nameOnlyMatch;
+  }
+  return { platformId: CUSTOMER_PLATFORM, modelPreset: CUSTOMER_MODEL, authMode: AUTH_MODE_API_KEY };
 }
 
 function refreshModelControlsLocale() {
   const quickPlatform = els.quickModelPlatform?.value || "";
   const quickPreset = els.quickModelPreset?.value || "";
   renderModelSelectors("quick", quickPlatform, quickPreset);
-  applyModelSelection("quick", { preserveCustomName: true });
+  applyModelSelection("quick", { preserveCustomName: true, preserveAuthMode: true });
+  refreshOAuthStatusBadge("quick");
 
   const wizardPlatform = els.wizardModelPlatform?.value || "";
   const wizardPreset = els.wizardModelPreset?.value || "";
   renderModelSelectors("wizard", wizardPlatform, wizardPreset);
-  applyModelSelection("wizard", { preserveCustomName: true });
+  applyModelSelection("wizard", { preserveCustomName: true, preserveAuthMode: true });
+  refreshOAuthStatusBadge("wizard");
 }
 
 function getChannelElements(scope) {
@@ -993,7 +1237,10 @@ function applyLocale() {
   setText("quickModelPresetLabel", t("platform_model"));
   setText("quickModelNameLabel", t("model_name"));
   setText("quickApiBaseLabel", t("api_base"));
+  setText("quickAuthMethodLabel", t("auth_method"));
   setText("quickApiKeyLabel", t("api_key"));
+  setText("quickOAuthStatusLabel", t("oauth_status"));
+  setText("quickOAuthLoginBtn", t("oauth_login"));
   setText("quickChannelPlatformLabel", t("channel_platform"));
   setText("quickChannelConfigLabel", t("channel_config"));
   setText("saveQuickConfigBtn", t("save_quick_config"));
@@ -1021,7 +1268,10 @@ function applyLocale() {
   setText("wizardModelPresetLabel", t("platform_model"));
   setText("wizardModelNameLabel", t("model_name"));
   setText("wizardApiBaseLabel", t("api_base"));
+  setText("wizardAuthMethodLabel", t("auth_method"));
   setText("wizardApiKeyLabel", t("api_key"));
+  setText("wizardOAuthStatusLabel", t("oauth_status"));
+  setText("wizardOAuthLoginBtn", t("oauth_login"));
   setText("wizardChannelPlatformLabel", t("channel_platform"));
   setText("wizardChannelConfigLabel", t("channel_config"));
   setText("wizardCancelBtn", t("wizard_cancel"));
@@ -1169,6 +1419,45 @@ async function loadSettings() {
   } catch {}
   renderSettings();
   applyLocale();
+}
+
+async function refreshAuthStatus() {
+  try {
+    const payload = await api.getAuthStatus();
+    state.authStatus = payload && typeof payload === "object" ? payload : { providers: {} };
+  } catch {
+    state.authStatus = { providers: {} };
+  }
+  refreshOAuthStatusBadge("quick");
+  refreshOAuthStatusBadge("wizard");
+}
+
+async function triggerOAuthLogin(scope) {
+  const form = getModelFormElements(scope);
+  const platform = getPlatformById(form.platform?.value || "");
+  const oauth = getOAuthMetadata(platform);
+  if (!oauth?.provider) {
+    showInfo(t("oauth_login_required"));
+    return;
+  }
+
+  const loginButton = form.oauthLoginBtn;
+  if (loginButton) {
+    loginButton.disabled = true;
+  }
+
+  try {
+    showInfo(t("oauth_login_browser"));
+    await api.authLogin(oauth.provider);
+    await refreshAuthStatus();
+    showInfo(t("oauth_login_success"));
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (loginButton) {
+      loginButton.disabled = false;
+    }
+  }
 }
 
 async function saveSettingsAction() {
@@ -1459,9 +1748,12 @@ function getQuickDataFromConfig(cfg, selected) {
   const defaults = safe.agents.defaults || {};
   const defaultAlias = String(defaults.model || "").trim() || "";
   const entry = findModelEntry(safe, defaultAlias) || {};
-  const modelName = String(entry.model || defaultAlias || "").trim();
+  const configuredModel = String(entry.model || "").trim();
+  const parsedModel = parseConfiguredModel(configuredModel);
+  const modelName = parsedModel.modelId || String(defaultAlias || "").trim();
   const apiBase = String(entry.api_base || "").trim();
-  const selection = detectModelSelection(modelName, apiBase);
+  const authMode = String(entry.auth_method || "").trim() === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : AUTH_MODE_API_KEY;
+  const selection = detectModelSelection(configuredModel || modelName, apiBase, authMode);
   const activeChannel = detectEnabledChannel(safe.channels || {});
 
   return {
@@ -1471,6 +1763,7 @@ function getQuickDataFromConfig(cfg, selected) {
     modelName,
     apiBase,
     apiKey: String(entry.api_key || ""),
+    authMode: selection.authMode || authMode,
     channelPlatform: activeChannel
   };
 }
@@ -1482,7 +1775,8 @@ function renderQuickConfig() {
     renderModelSelectors("quick");
     els.quickModelName.value = "";
     els.quickApiBase.value = "";
-    applyModelSelection("quick", { preserveCustomName: true });
+    renderAuthMethodOptions("quick", AUTH_MODE_API_KEY);
+    applyModelSelection("quick", { preserveCustomName: true, preserveAuthMode: true });
     els.quickApiKey.value = "";
     ensureChannelStoreFromConfig("quick", {});
     renderChannelPlatformOptions("quick", "telegram");
@@ -1495,7 +1789,10 @@ function renderQuickConfig() {
   renderModelSelectors("quick", quick.modelPlatform, quick.modelPreset);
   els.quickModelName.value = quick.modelName;
   els.quickApiBase.value = quick.apiBase;
-  applyModelSelection("quick", { preserveCustomName: true });
+  renderAuthMethodOptions("quick", quick.authMode || AUTH_MODE_API_KEY);
+  applyModelSelection("quick", { preserveCustomName: true, preserveAuthMode: true });
+  els.quickAuthMethod.value = quick.authMode || AUTH_MODE_API_KEY;
+  applyAuthMethodSelection("quick");
   els.quickApiKey.value = quick.apiKey;
   ensureChannelStoreFromConfig("quick", state.configDraft.channels || {});
   renderChannelPlatformOptions("quick", quick.channelPlatform);
@@ -1511,6 +1808,7 @@ function getQuickDataFromInputs() {
     modelPreset: String(els.quickModelPreset.value || "").trim(),
     modelName: String(els.quickModelName.value || "").trim(),
     apiBase: String(els.quickApiBase.value || "").trim(),
+    authMode: String(els.quickAuthMethod.value || AUTH_MODE_API_KEY).trim(),
     apiKey: String(els.quickApiKey.value || "").trim(),
     channelPlatform,
     channelValues
@@ -1520,6 +1818,8 @@ function getQuickDataFromInputs() {
 function applyQuickDataToConfig(cfg, quick) {
   const safe = ensureConfigRoots(cfg);
   const alias = quick.modelName || String(safe.agents.defaults.model || "").trim() || "default-model";
+  const authMode = quick.authMode === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : AUTH_MODE_API_KEY;
+  const modelValue = buildConfigModelValue(quick.modelPlatform, quick.modelName, authMode);
   safe.agents.defaults.model = alias;
 
   if (!Array.isArray(safe.model_list)) {
@@ -1536,9 +1836,10 @@ function applyQuickDataToConfig(cfg, quick) {
 
   const entry = safe.model_list[entryIndex] && typeof safe.model_list[entryIndex] === "object" ? safe.model_list[entryIndex] : {};
   entry.model_name = alias;
-  entry.model = quick.modelName;
-  entry.api_base = quick.apiBase;
-  entry.api_key = quick.apiKey;
+  entry.model = modelValue;
+  entry.api_base = authMode === AUTH_MODE_OAUTH ? "" : quick.apiBase;
+  entry.api_key = authMode === AUTH_MODE_OAUTH ? "" : quick.apiKey;
+  entry.auth_method = authMode === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : "";
   safe.model_list[entryIndex] = entry;
 
   if (!safe.channels || typeof safe.channels !== "object") {
@@ -1569,6 +1870,9 @@ async function saveQuickConfig() {
 
   try {
     const quick = getQuickDataFromInputs();
+    if (!validateModelInputs(quick, "quick")) {
+      return;
+    }
     const nextCfg = applyQuickDataToConfig(safeClone(state.configDraft), quick);
 
     if (quick.agentName && quick.agentName !== (selected.meta.name || selected.id)) {
@@ -2006,6 +2310,37 @@ function lockWizardButtons(locked) {
   els.wizardSubmitBtn.disabled = disabled;
 }
 
+function validateModelInputs(data, scope) {
+  const form = getModelFormElements(scope);
+  if (!data.modelName) {
+    showInfo(t("wizard_req_model_name"));
+    form.modelName?.focus();
+    return false;
+  }
+  if (data.authMode !== AUTH_MODE_OAUTH && !data.apiBase) {
+    showInfo(t("wizard_req_api_base"));
+    form.apiBase?.focus();
+    return false;
+  }
+  if (data.authMode === AUTH_MODE_OAUTH) {
+    const platform = getPlatformById(data.modelPlatform);
+    const oauth = getOAuthMetadata(platform);
+    const entry = oauth ? getProviderAuthEntry(oauth.provider) : null;
+    if (!oauth || !entry || entry.status === "expired") {
+      showInfo(t("oauth_login_required"));
+      form.oauthLoginBtn?.focus();
+      return false;
+    }
+    return true;
+  }
+  if (!data.apiKey) {
+    showInfo(t("wizard_req_api_key"));
+    form.apiKey?.focus();
+    return false;
+  }
+  return true;
+}
+
 function openCreateWizard() {
   wizardState.open = true;
   wizardState.submitting = false;
@@ -2015,7 +2350,8 @@ function openCreateWizard() {
   renderModelSelectors("wizard");
   els.wizardModelName.value = "";
   els.wizardApiBase.value = "";
-  applyModelSelection("wizard", { preserveCustomName: false });
+  renderAuthMethodOptions("wizard", AUTH_MODE_API_KEY);
+  applyModelSelection("wizard", { preserveCustomName: false, preserveAuthMode: true });
   els.wizardApiKey.value = "";
   ensureChannelStoreFromConfig("wizard", {});
   renderChannelPlatformOptions("wizard", "telegram");
@@ -2043,6 +2379,7 @@ function collectWizardData() {
     modelPreset: String(els.wizardModelPreset.value || "").trim(),
     modelName: String(els.wizardModelName.value || "").trim(),
     apiBase: String(els.wizardApiBase.value || "").trim(),
+    authMode: String(els.wizardAuthMethod.value || AUTH_MODE_API_KEY).trim(),
     apiKey: String(els.wizardApiKey.value || "").trim(),
     channelPlatform,
     channelValues
@@ -2064,19 +2401,7 @@ function validateWizardStep(step) {
       els.wizardAgentName.focus();
       return false;
     }
-    if (!data.modelName) {
-      showInfo(t("wizard_req_model_name"));
-      els.wizardModelName.focus();
-      return false;
-    }
-    if (!data.apiBase) {
-      showInfo(t("wizard_req_api_base"));
-      els.wizardApiBase.focus();
-      return false;
-    }
-    if (!data.apiKey) {
-      showInfo(t("wizard_req_api_key"));
-      els.wizardApiKey.focus();
+    if (!validateModelInputs(data, "wizard")) {
       return false;
     }
   }
@@ -2145,18 +2470,24 @@ function bindEvents() {
 
   els.quickModelPlatform.addEventListener("change", () => {
     renderModelSelectors("quick", els.quickModelPlatform.value, "");
-    applyModelSelection("quick", { preserveCustomName: false });
+    applyModelSelection("quick", { preserveCustomName: false, preserveAuthMode: false });
   });
   els.quickModelPreset.addEventListener("change", () => {
-    applyModelSelection("quick", { preserveCustomName: false });
+    applyModelSelection("quick", { preserveCustomName: false, preserveAuthMode: true });
+  });
+  els.quickAuthMethod.addEventListener("change", () => {
+    applyAuthMethodSelection("quick");
   });
 
   els.wizardModelPlatform.addEventListener("change", () => {
     renderModelSelectors("wizard", els.wizardModelPlatform.value, "");
-    applyModelSelection("wizard", { preserveCustomName: false });
+    applyModelSelection("wizard", { preserveCustomName: false, preserveAuthMode: false });
   });
   els.wizardModelPreset.addEventListener("change", () => {
-    applyModelSelection("wizard", { preserveCustomName: false });
+    applyModelSelection("wizard", { preserveCustomName: false, preserveAuthMode: true });
+  });
+  els.wizardAuthMethod.addEventListener("change", () => {
+    applyAuthMethodSelection("wizard");
   });
 
   els.quickChannelPlatform.addEventListener("change", () => {
@@ -2166,6 +2497,9 @@ function bindEvents() {
   els.wizardChannelPlatform.addEventListener("change", () => {
     renderChannelFields("wizard", els.wizardChannelPlatform.value || "telegram");
   });
+
+  els.quickOAuthLoginBtn.addEventListener("click", () => triggerOAuthLogin("quick"));
+  els.wizardOAuthLoginBtn.addEventListener("click", () => triggerOAuthLogin("wizard"));
 
   els.createAgentBtn.addEventListener("click", () => openCreateWizard());
 
@@ -2374,14 +2708,15 @@ async function boot() {
   }
   renderModelSelectors("quick");
   renderModelSelectors("wizard");
-  applyModelSelection("quick", { preserveCustomName: true });
-  applyModelSelection("wizard", { preserveCustomName: true });
+  applyModelSelection("quick", { preserveCustomName: true, preserveAuthMode: true });
+  applyModelSelection("wizard", { preserveCustomName: true, preserveAuthMode: true });
   ensureChannelStoreFromConfig("quick", {});
   ensureChannelStoreFromConfig("wizard", {});
   renderChannelPlatformOptions("quick", "telegram");
   renderChannelPlatformOptions("wizard", "telegram");
   renderChannelFields("quick", "telegram");
   renderChannelFields("wizard", "telegram");
+  await refreshAuthStatus();
   renderRuntimeInfo();
   await loadSettings();
   setConfigView("quick");
