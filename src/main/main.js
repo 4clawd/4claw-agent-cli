@@ -359,6 +359,14 @@ function setupIpc() {
   ipcMain.handle("settings:save", (_event, patch) => saveSettings(patch));
   ipcMain.handle("auth:status", () => agentService.getAuthStatus());
   ipcMain.handle("auth:login", (_event, provider) => agentService.loginWithOAuth(provider));
+  ipcMain.handle("auth:session", (_event, sessionId) => agentService.getAuthSession(sessionId));
+  ipcMain.handle("shell:openExternal", (_event, target) => {
+    const url = String(target || "").trim();
+    if (!url) {
+      return false;
+    }
+    return shell.openExternal(url);
+  });
 
   ipcMain.handle("agents:list", () => agentService.listAgents());
   ipcMain.handle("agents:create", (_event, name) => agentService.createAgent(name));

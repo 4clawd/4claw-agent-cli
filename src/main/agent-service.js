@@ -54,6 +54,7 @@ class AgentService {
   constructor(app) {
     this.app = app;
     this.running = new Map();
+    this.authSessions = new Map();
     this.paths = this.initPaths();
   }
 
@@ -203,11 +204,184 @@ class AgentService {
       throw new Error("OAuth provider is required");
     }
 
+    if (normalizedProvider === "openai") {
+      return this.startOpenAIDeviceCodeLogin();
+    }
+
     const result = await this.runBinaryCommand(["auth", "login", "--provider", normalizedProvider]);
     return {
+      mode: "browser",
+      provider: normalizedProvider,
+      status: "success",
       ...result,
       authStatus: this.getAuthStatus()
     };
+  }
+
+  findPendingAuthSession(provider) {
+    for (const session of this.authSessions.values()) {
+      if (session.provider === provider && (session.status === "starting" || session.status === "pending")) {
+        return session;
+      }
+    }
+    return null;
+  }
+
+  parseOpenAIDeviceCodeOutput(text) {
+    const source = String(text || "").replace(/\r/g, "");
+    const urlMatch = source.match(/To authenticate, open this URL in your browser:\s+([^\s]+)/i);
+    const codeMatch = source.match(/Then enter this code:\s+([A-Z0-9-]+)/i);
+    return {
+      deviceUrl: urlMatch ? String(urlMatch[1] || "").trim() : "",
+      userCode: codeMatch ? String(codeMatch[1] || "").trim() : ""
+    };
+  }
+
+  serializeAuthSession(session) {
+    if (!session) {
+      return null;
+    }
+    return {
+      id: session.id,
+      provider: session.provider,
+      mode: session.mode,
+      status: session.status,
+      deviceUrl: session.deviceUrl || "",
+      userCode: session.userCode || "",
+      stdout: session.stdout || "",
+      stderr: session.stderr || "",
+      error: session.error || "",
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      authStatus: session.status === "success" ? this.getAuthStatus() : null
+    };
+  }
+
+  updateAuthSession(session, patch = {}) {
+    Object.assign(session, patch, { updatedAt: nowISO() });
+  }
+
+  getAuthSession(sessionId) {
+    return this.serializeAuthSession(this.authSessions.get(String(sessionId || "").trim()));
+  }
+
+  scheduleAuthSessionCleanup(sessionId, delayMs = 10 * 60 * 1000) {
+    setTimeout(() => {
+      this.authSessions.delete(sessionId);
+    }, delayMs).unref?.();
+  }
+
+  async startOpenAIDeviceCodeLogin() {
+    const existing = this.findPendingAuthSession("openai");
+    if (existing) {
+      return this.serializeAuthSession(existing);
+    }
+
+    const binary = this.resolveBinaryPath();
+    if (!binary.found) {
+      throw new Error(`4claw executable not found: ${binary.binaryName}`);
+    }
+
+    const session = {
+      id: `auth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      provider: "openai",
+      mode: "device_code",
+      status: "starting",
+      deviceUrl: "",
+      userCode: "",
+      stdout: "",
+      stderr: "",
+      error: "",
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    };
+    this.authSessions.set(session.id, session);
+
+    const child = spawn(binary.resolvedPath, ["auth", "login", "--provider", "openai", "--device-code"], {
+      cwd: this.paths.root,
+      windowsHide: true
+    });
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const maybeResolvePending = () => {
+        const parsed = this.parseOpenAIDeviceCodeOutput(`${session.stdout}\n${session.stderr}`);
+        if (!session.deviceUrl && parsed.deviceUrl) {
+          session.deviceUrl = parsed.deviceUrl;
+        }
+        if (!session.userCode && parsed.userCode) {
+          session.userCode = parsed.userCode;
+        }
+        if (!settled && session.deviceUrl && session.userCode) {
+          this.updateAuthSession(session, { status: "pending" });
+          settled = true;
+          resolve(this.serializeAuthSession(session));
+        }
+      };
+
+      child.stdout.on("data", (chunk) => {
+        session.stdout += String(chunk);
+        maybeResolvePending();
+      });
+
+      child.stderr.on("data", (chunk) => {
+        session.stderr += String(chunk);
+        maybeResolvePending();
+      });
+
+      child.on("error", (error) => {
+        this.updateAuthSession(session, {
+          status: "error",
+          error: error.message || String(error)
+        });
+        this.scheduleAuthSessionCleanup(session.id);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          this.updateAuthSession(session, { status: "success" });
+          this.scheduleAuthSessionCleanup(session.id);
+          if (!settled) {
+            settled = true;
+            resolve(this.serializeAuthSession(session));
+          }
+          return;
+        }
+
+        const message = (session.stderr || session.stdout || `4claw exited with code ${code}`).trim();
+        this.updateAuthSession(session, {
+          status: "error",
+          error: message
+        });
+        this.scheduleAuthSessionCleanup(session.id);
+        if (!settled) {
+          settled = true;
+          reject(new Error(message));
+        }
+      });
+
+      setTimeout(() => {
+        maybeResolvePending();
+        if (!settled && !session.deviceUrl && !session.userCode) {
+          const message = "Unable to read OpenAI device code information from 4claw output.";
+          this.updateAuthSession(session, {
+            status: "error",
+            error: message
+          });
+          this.scheduleAuthSessionCleanup(session.id);
+          settled = true;
+          try {
+            child.kill("SIGTERM");
+          } catch {}
+          reject(new Error(message));
+        }
+      }, 5000);
+    });
   }
 
   templateConfigPath() {

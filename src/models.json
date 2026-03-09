@@ -17,7 +17,8 @@
         "enabled": true,
         "provider": "openai",
         "model_protocol": "openai",
-        "auth_method": "oauth"
+        "auth_method": "oauth",
+        "flow": "device_code"
       }
     }
   },
@@ -38,7 +39,8 @@
         "enabled": true,
         "provider": "google-antigravity",
         "model_protocol": "antigravity",
-        "auth_method": "oauth"
+        "auth_method": "oauth",
+        "flow": "browser"
       }
     }
   },

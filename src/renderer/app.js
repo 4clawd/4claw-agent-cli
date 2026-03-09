@@ -92,7 +92,19 @@ const els = {
   wizardCancelBtn: document.getElementById("wizardCancelBtn"),
   wizardPrevBtn: document.getElementById("wizardPrevBtn"),
   wizardNextBtn: document.getElementById("wizardNextBtn"),
-  wizardSubmitBtn: document.getElementById("wizardSubmitBtn")
+  wizardSubmitBtn: document.getElementById("wizardSubmitBtn"),
+  oauthDeviceModal: document.getElementById("oauthDeviceModal"),
+  oauthDeviceTitle: document.getElementById("oauthDeviceTitle"),
+  oauthDeviceState: document.getElementById("oauthDeviceState"),
+  oauthDeviceIntro: document.getElementById("oauthDeviceIntro"),
+  oauthDeviceUrlLabel: document.getElementById("oauthDeviceUrlLabel"),
+  oauthDeviceUrl: document.getElementById("oauthDeviceUrl"),
+  oauthDeviceOpenBtn: document.getElementById("oauthDeviceOpenBtn"),
+  oauthDeviceCodeLabel: document.getElementById("oauthDeviceCodeLabel"),
+  oauthDeviceCode: document.getElementById("oauthDeviceCode"),
+  oauthDeviceCopyBtn: document.getElementById("oauthDeviceCopyBtn"),
+  oauthDeviceHint: document.getElementById("oauthDeviceHint"),
+  oauthDeviceCloseBtn: document.getElementById("oauthDeviceCloseBtn")
 };
 
 const wizardState = {
@@ -103,6 +115,8 @@ const wizardState = {
 
 let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
+let authSessionPollTimer = null;
+let activeAuthSessionId = "";
 const AUTH_MODE_API_KEY = "api_key";
 const AUTH_MODE_OAUTH = "oauth";
 const CUSTOMER_PLATFORM = "__customer_platform__";
@@ -159,8 +173,21 @@ const I18N = {
     oauth_needs_refresh: "Needs refresh",
     oauth_expired: "Expired",
     oauth_login_browser: "A browser window should open to complete OAuth login.",
+    oauth_login_device_code: "Device code login started. Complete verification with the URL and code shown.",
     oauth_login_success: "OAuth login completed.",
     oauth_login_required: "Complete OAuth login before continuing.",
+    oauth_device_title: "OpenAI Device Login",
+    oauth_device_waiting: "Waiting for verification",
+    oauth_device_pending: "Waiting for completion",
+    oauth_device_success: "Authenticated",
+    oauth_device_url: "Verification URL",
+    oauth_device_code: "User Code",
+    oauth_device_open: "Open Page",
+    oauth_device_copy: "Copy Code",
+    oauth_device_close: "Close",
+    oauth_device_intro: "Open the verification page and enter the one-time code below.",
+    oauth_device_hint: "Keep this dialog open until login completes.",
+    oauth_device_code_copied: "Device code copied.",
     channel_platform: "Channel Platform",
     channel_config: "Channel Config",
     channel_no_fields: "No configurable fields in default-config for this platform.",
@@ -288,8 +315,21 @@ const I18N = {
     oauth_needs_refresh: "即将刷新",
     oauth_expired: "已过期",
     oauth_login_browser: "将打开浏览器完成 OAuth 登录。",
+    oauth_login_device_code: "已启动 Device Code 登录，请使用弹窗中的地址和验证码完成认证。",
     oauth_login_success: "OAuth 登录已完成。",
     oauth_login_required: "请先完成 OAuth 登录。",
+    oauth_device_title: "OpenAI Device Code 登录",
+    oauth_device_waiting: "等待验证码",
+    oauth_device_pending: "等待完成",
+    oauth_device_success: "已认证",
+    oauth_device_url: "验证地址",
+    oauth_device_code: "用户验证码",
+    oauth_device_open: "打开页面",
+    oauth_device_copy: "复制验证码",
+    oauth_device_close: "关闭",
+    oauth_device_intro: "打开验证页面，并输入下方一次性验证码。",
+    oauth_device_hint: "请保持此弹窗开启，直到登录完成。",
+    oauth_device_code_copied: "验证码已复制。",
     channel_platform: "通讯平台",
     channel_config: "平台配置",
     channel_no_fields: "该平台在 default-config 中没有可配置字段。",
@@ -417,8 +457,21 @@ const I18N = {
     oauth_needs_refresh: "Требует обновления",
     oauth_expired: "Срок истек",
     oauth_login_browser: "Для завершения OAuth-авторизации должно открыться окно браузера.",
+    oauth_login_device_code: "Запущен вход по device code. Завершите авторизацию по ссылке и коду из окна.",
     oauth_login_success: "OAuth-авторизация завершена.",
     oauth_login_required: "Сначала завершите OAuth-авторизацию.",
+    oauth_device_title: "Вход OpenAI через Device Code",
+    oauth_device_waiting: "Ожидание подтверждения",
+    oauth_device_pending: "Ожидание завершения",
+    oauth_device_success: "Авторизовано",
+    oauth_device_url: "URL подтверждения",
+    oauth_device_code: "Код пользователя",
+    oauth_device_open: "Открыть страницу",
+    oauth_device_copy: "Копировать код",
+    oauth_device_close: "Закрыть",
+    oauth_device_intro: "Откройте страницу подтверждения и введите одноразовый код ниже.",
+    oauth_device_hint: "Не закрывайте это окно до завершения входа.",
+    oauth_device_code_copied: "Код скопирован.",
     channel_platform: "Платформа связи",
     channel_config: "Конфиг платформы",
     channel_no_fields: "Для этой платформы нет настраиваемых полей в default-config.",
@@ -558,7 +611,8 @@ function normalizeModelCatalog(raw) {
             enabled: Boolean(oauth.enabled),
             provider: String(oauth.provider || "").trim(),
             modelProtocol: String(oauth.model_protocol || "").trim().toLowerCase(),
-            authMethod: String(oauth.auth_method || AUTH_MODE_OAUTH).trim() || AUTH_MODE_OAUTH
+            authMethod: String(oauth.auth_method || AUTH_MODE_OAUTH).trim() || AUTH_MODE_OAUTH,
+            flow: String(oauth.flow || "").trim().toLowerCase()
           }
         }
       };
@@ -1278,6 +1332,14 @@ function applyLocale() {
   setText("wizardPrevBtn", t("wizard_back"));
   setText("wizardNextBtn", t("wizard_next"));
   setText("wizardSubmitBtn", t("wizard_create_start"));
+  setText("oauthDeviceTitle", t("oauth_device_title"));
+  setText("oauthDeviceIntro", t("oauth_device_intro"));
+  setText("oauthDeviceUrlLabel", t("oauth_device_url"));
+  setText("oauthDeviceOpenBtn", t("oauth_device_open"));
+  setText("oauthDeviceCodeLabel", t("oauth_device_code"));
+  setText("oauthDeviceCopyBtn", t("oauth_device_copy"));
+  setText("oauthDeviceHint", t("oauth_device_hint"));
+  setText("oauthDeviceCloseBtn", t("oauth_device_close"));
 
   if (els.quickModelName) {
     els.quickModelName.placeholder = t("placeholder_model_name");
@@ -1318,6 +1380,14 @@ function applyLocale() {
   renderBackups();
   if (wizardState.open) {
     setWizardStep(wizardState.step);
+  }
+  if (els.oauthDeviceModal && !els.oauthDeviceModal.classList.contains("hidden")) {
+    renderOAuthDeviceModal({
+      status: activeAuthSessionId ? "pending" : "starting",
+      deviceUrl: els.oauthDeviceUrl?.textContent || "",
+      userCode: els.oauthDeviceCode?.textContent || "",
+      error: ""
+    });
   }
 }
 
@@ -1432,6 +1502,133 @@ async function refreshAuthStatus() {
   refreshOAuthStatusBadge("wizard");
 }
 
+function clearAuthSessionPolling() {
+  if (authSessionPollTimer) {
+    window.clearInterval(authSessionPollTimer);
+    authSessionPollTimer = null;
+  }
+  activeAuthSessionId = "";
+}
+
+function getDeviceSessionStateText(status) {
+  switch (status) {
+    case "success":
+      return t("oauth_device_success");
+    case "pending":
+      return t("oauth_device_pending");
+    default:
+      return t("oauth_device_waiting");
+  }
+}
+
+function renderOAuthDeviceModal(session) {
+  if (!els.oauthDeviceModal) {
+    return;
+  }
+  if (els.oauthDeviceTitle) {
+    els.oauthDeviceTitle.textContent = t("oauth_device_title");
+  }
+  if (els.oauthDeviceIntro) {
+    els.oauthDeviceIntro.textContent = t("oauth_device_intro");
+  }
+  if (els.oauthDeviceUrlLabel) {
+    els.oauthDeviceUrlLabel.textContent = t("oauth_device_url");
+  }
+  if (els.oauthDeviceCodeLabel) {
+    els.oauthDeviceCodeLabel.textContent = t("oauth_device_code");
+  }
+  if (els.oauthDeviceOpenBtn) {
+    els.oauthDeviceOpenBtn.textContent = t("oauth_device_open");
+    els.oauthDeviceOpenBtn.disabled = !session?.deviceUrl;
+  }
+  if (els.oauthDeviceCopyBtn) {
+    els.oauthDeviceCopyBtn.textContent = t("oauth_device_copy");
+    els.oauthDeviceCopyBtn.disabled = !session?.userCode;
+  }
+  if (els.oauthDeviceCloseBtn) {
+    els.oauthDeviceCloseBtn.textContent = t("oauth_device_close");
+  }
+  if (els.oauthDeviceHint) {
+    els.oauthDeviceHint.textContent =
+      session?.status === "success" ? t("oauth_login_success") : t("oauth_device_hint");
+  }
+  if (els.oauthDeviceState) {
+    els.oauthDeviceState.textContent = session?.error || getDeviceSessionStateText(session?.status || "");
+  }
+  if (els.oauthDeviceUrl) {
+    els.oauthDeviceUrl.textContent = session?.deviceUrl || "";
+  }
+  if (els.oauthDeviceCode) {
+    els.oauthDeviceCode.textContent = session?.userCode || "";
+  }
+}
+
+function openOAuthDeviceModal(session) {
+  renderOAuthDeviceModal(session);
+  els.oauthDeviceModal?.classList.remove("hidden");
+}
+
+function closeOAuthDeviceModal() {
+  els.oauthDeviceModal?.classList.add("hidden");
+}
+
+async function copyTextToClipboard(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return;
+  }
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.setAttribute("readonly", "readonly");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand("copy");
+  input.remove();
+}
+
+function startAuthSessionPolling(sessionId) {
+  clearAuthSessionPolling();
+  activeAuthSessionId = String(sessionId || "").trim();
+  if (!activeAuthSessionId) {
+    return;
+  }
+
+  authSessionPollTimer = window.setInterval(async () => {
+    try {
+      const session = await api.getAuthSession(activeAuthSessionId);
+      if (!session) {
+        clearAuthSessionPolling();
+        return;
+      }
+
+      renderOAuthDeviceModal(session);
+
+      if (session.status === "success") {
+        clearAuthSessionPolling();
+        await refreshAuthStatus();
+        renderOAuthDeviceModal(session);
+        showInfo(t("oauth_login_success"));
+        window.setTimeout(() => closeOAuthDeviceModal(), 1200);
+        return;
+      }
+
+      if (session.status === "error") {
+        clearAuthSessionPolling();
+        showError(session.error || "OAuth login failed.");
+      }
+    } catch (error) {
+      clearAuthSessionPolling();
+      showError(error);
+    }
+  }, 1500);
+}
+
 async function triggerOAuthLogin(scope) {
   const form = getModelFormElements(scope);
   const platform = getPlatformById(form.platform?.value || "");
@@ -1447,8 +1644,21 @@ async function triggerOAuthLogin(scope) {
   }
 
   try {
-    showInfo(t("oauth_login_browser"));
-    await api.authLogin(oauth.provider);
+    if (oauth.flow !== "device_code") {
+      showInfo(t("oauth_login_browser"));
+    }
+    const result = await api.authLogin(oauth.provider);
+    if (result?.mode === "device_code") {
+      openOAuthDeviceModal(result);
+      startAuthSessionPolling(result.sessionId || result.id);
+      showInfo(t("oauth_login_device_code"));
+      if (result.deviceUrl) {
+        try {
+          await api.openExternal(result.deviceUrl);
+        } catch {}
+      }
+      return;
+    }
     await refreshAuthStatus();
     showInfo(t("oauth_login_success"));
   } catch (error) {
@@ -2500,6 +2710,30 @@ function bindEvents() {
 
   els.quickOAuthLoginBtn.addEventListener("click", () => triggerOAuthLogin("quick"));
   els.wizardOAuthLoginBtn.addEventListener("click", () => triggerOAuthLogin("wizard"));
+  els.oauthDeviceOpenBtn?.addEventListener("click", async () => {
+    const target = els.oauthDeviceUrl?.textContent || "";
+    if (!target) {
+      return;
+    }
+    try {
+      await api.openExternal(target);
+    } catch (error) {
+      showError(error);
+    }
+  });
+  els.oauthDeviceCopyBtn?.addEventListener("click", async () => {
+    const code = els.oauthDeviceCode?.textContent || "";
+    if (!code) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(code);
+      showInfo(t("oauth_device_code_copied"));
+    } catch (error) {
+      showError(error);
+    }
+  });
+  els.oauthDeviceCloseBtn?.addEventListener("click", () => closeOAuthDeviceModal());
 
   els.createAgentBtn.addEventListener("click", () => openCreateWizard());
 

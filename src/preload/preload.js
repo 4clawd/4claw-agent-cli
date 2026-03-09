@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("clawApi", {
   saveSettings: (patch) => ipcRenderer.invoke("settings:save", patch),
   getAuthStatus: () => ipcRenderer.invoke("auth:status"),
   authLogin: (provider) => ipcRenderer.invoke("auth:login", provider),
+  getAuthSession: (sessionId) => ipcRenderer.invoke("auth:session", sessionId),
   listAgents: () => ipcRenderer.invoke("agents:list"),
   createAgent: (name) => ipcRenderer.invoke("agents:create", name),
   renameAgent: (id, name) => ipcRenderer.invoke("agents:rename", id, name),
@@ -25,6 +26,7 @@ contextBridge.exposeInMainWorld("clawApi", {
   restoreBackup: (fileName, preferredName) =>
     ipcRenderer.invoke("agents:backup:restore", fileName, preferredName),
   openAgentFolder: (id) => ipcRenderer.invoke("agents:folder:open", id),
+  openExternal: (target) => ipcRenderer.invoke("shell:openExternal", target),
   minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
   closeWindow: () => ipcRenderer.invoke("window:close")
 });

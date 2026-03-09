@@ -260,6 +260,34 @@
       </div>
     </div>
 
+    <div id="oauthDeviceModal" class="wizard-mask hidden">
+      <div class="oauth-device-dialog glass">
+        <div class="wizard-head">
+          <h3 id="oauthDeviceTitle">OpenAI Device Login</h3>
+          <div id="oauthDeviceState" class="wizard-step-label">Waiting</div>
+        </div>
+        <div class="oauth-device-body">
+          <p id="oauthDeviceIntro" class="oauth-device-intro">
+            Open the verification page and enter the one-time code below.
+          </p>
+          <div class="oauth-device-card">
+            <span id="oauthDeviceUrlLabel" class="oauth-device-label">Verification URL</span>
+            <code id="oauthDeviceUrl" class="oauth-device-value"></code>
+            <button id="oauthDeviceOpenBtn" class="btn btn-soft" type="button">Open Page</button>
+          </div>
+          <div class="oauth-device-card">
+            <span id="oauthDeviceCodeLabel" class="oauth-device-label">User Code</span>
+            <code id="oauthDeviceCode" class="oauth-device-value"></code>
+            <button id="oauthDeviceCopyBtn" class="btn btn-soft" type="button">Copy Code</button>
+          </div>
+          <p id="oauthDeviceHint" class="oauth-device-hint">Keep this dialog open until login completes.</p>
+        </div>
+        <div class="wizard-actions">
+          <button id="oauthDeviceCloseBtn" class="btn btn-soft" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toastHost" class="toast-host"></div>
     <script src="./app.js"></script>
   </body>
