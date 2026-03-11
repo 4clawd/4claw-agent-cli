@@ -377,6 +377,13 @@ function setupIpc() {
 
   ipcMain.handle("agents:config:load", (_event, id) => agentService.loadConfig(id));
   ipcMain.handle("agents:config:save", (_event, id, data) => agentService.saveConfig(id, data));
+  ipcMain.handle("agents:chat:session:get", (_event, id, sessionKey = "") =>
+    agentService.getChatSession(id, sessionKey)
+  );
+  ipcMain.handle("agents:chat:session:new", (_event, id) => agentService.createChatSession(id));
+  ipcMain.handle("agents:chat:send", (_event, id, sessionKey, message) =>
+    agentService.sendChatMessage(id, sessionKey, message)
+  );
   ipcMain.handle("agents:config:export", async (_event, id) => {
     const result = await dialog.showSaveDialog({
       title: "Export Agent Config",

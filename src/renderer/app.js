@@ -11,6 +11,12 @@ const state = {
   configAgentId: "",
   configDraft: null,
   configOriginal: null,
+  chatAgentId: "",
+  chatSessionKeyByAgent: {},
+  chatSession: null,
+  chatMessages: [],
+  chatSending: false,
+  chatPendingMessage: "",
   logsAgentId: "",
   logs: "",
   backupsAgentId: "",
@@ -39,11 +45,21 @@ const els = {
   tabs: Array.from(document.querySelectorAll("nav.tabs .tab-btn[data-tab]")),
   panes: {
     dashboard: document.getElementById("tab-dashboard"),
+    chat: document.getElementById("tab-chat"),
     config: document.getElementById("tab-config"),
     logs: document.getElementById("tab-logs"),
     backups: document.getElementById("tab-backups"),
     settings: document.getElementById("tab-settings")
   },
+  chatTimeline: document.getElementById("chatTimeline"),
+  chatSessionTitle: document.getElementById("chatSessionTitle"),
+  chatSessionLabel: document.getElementById("chatSessionLabel"),
+  newChatSessionBtn: document.getElementById("newChatSessionBtn"),
+  reloadChatBtn: document.getElementById("reloadChatBtn"),
+  chatInputLabel: document.getElementById("chatInputLabel"),
+  chatInput: document.getElementById("chatInput"),
+  chatHintText: document.getElementById("chatHintText"),
+  sendChatBtn: document.getElementById("sendChatBtn"),
   importConfigBtn: document.getElementById("importConfigBtn"),
   exportConfigBtn: document.getElementById("exportConfigBtn"),
   reloadConfigBtn: document.getElementById("reloadConfigBtn"),
@@ -121,6 +137,8 @@ let logsAutoRefreshTimer = null;
 let authSessionPollTimer = null;
 let activeAuthSessionId = "";
 let configLoadSeq = 0;
+let chatLoadSeq = 0;
+let chatSendSeq = 0;
 let logsRefreshSeq = 0;
 let backupsRefreshSeq = 0;
 const AUTH_MODE_API_KEY = "api_key";
@@ -153,6 +171,7 @@ const I18N = {
     open_folder: "Open Folder",
     delete: "Delete",
     tab_dashboard: "Dashboard",
+    tab_chat: "Chat",
     tab_config: "Config",
     tab_logs: "Logs",
     tab_backups: "Backups",
@@ -207,6 +226,29 @@ const I18N = {
     refresh_logs: "Refresh Logs",
     clear_logs: "Clear Logs",
     logs_scroll_bottom: "Scroll to bottom",
+    chat_session_title: "Chat Session",
+    chat_session_idle: "No active session",
+    chat_new_session: "New Session",
+    chat_reload: "Reload",
+    chat_message: "Message",
+    chat_send: "Send",
+    chat_input_placeholder: "Type a message. Enter to send, Shift+Enter for a new line.",
+    chat_hint: "Uses `4claw agent --session --message` to keep the conversation continuous.",
+    chat_empty: "Select an agent, then send a message to start the conversation.",
+    chat_waiting: "Waiting for agent reply...",
+    chat_user: "You",
+    chat_assistant: "Agent",
+    chat_tool: "Tool",
+    chat_system: "System",
+    chat_unknown_role: "Message",
+    chat_session_prefix: "Session",
+    chat_summary_prefix: "Summary",
+    chat_message_count: "{count} messages",
+    chat_tool_calls: "Tool calls",
+    chat_new_session_ready: "New chat session created.",
+    chat_message_sent: "Message sent.",
+    chat_send_failed: "Message sending failed.",
+    chat_req_message: "Message cannot be empty.",
     create_backup: "Create Backup",
     export_backup: "Export Backup",
     settings_close_behavior: "Window Close Behavior",
@@ -228,6 +270,7 @@ const I18N = {
     wizard_step: "Step {step} / 2",
     empty_no_agents: "No agents yet. Click create to get started.",
     empty_select_agent_controls: "Select an agent to view status and controls.",
+    empty_select_agent_chat: "Select an agent to start chatting.",
     empty_no_config: "No config available.",
     empty_config_load_failed: "Failed to load config.json.",
     empty_select_agent_edit: "Select an agent to edit config.json.",
@@ -296,6 +339,7 @@ const I18N = {
     open_folder: "打开目录",
     delete: "删除",
     tab_dashboard: "总览",
+    tab_chat: "对话",
     tab_config: "配置",
     tab_logs: "日志",
     tab_backups: "备份",
@@ -350,6 +394,29 @@ const I18N = {
     refresh_logs: "刷新日志",
     clear_logs: "清空日志",
     logs_scroll_bottom: "滑到底部",
+    chat_session_title: "会话",
+    chat_session_idle: "当前没有激活会话",
+    chat_new_session: "新会话",
+    chat_reload: "重载",
+    chat_message: "消息",
+    chat_send: "发送",
+    chat_input_placeholder: "输入消息。回车发送，Shift+Enter 换行。",
+    chat_hint: "当前通过 `4claw agent --session --message` 持续保持上下文会话。",
+    chat_empty: "请选择一个 Agent，然后发送消息开始对话。",
+    chat_waiting: "正在等待 Agent 回复...",
+    chat_user: "你",
+    chat_assistant: "Agent",
+    chat_tool: "工具",
+    chat_system: "系统",
+    chat_unknown_role: "消息",
+    chat_session_prefix: "会话",
+    chat_summary_prefix: "摘要",
+    chat_message_count: "{count} 条消息",
+    chat_tool_calls: "工具调用",
+    chat_new_session_ready: "新对话会话已创建。",
+    chat_message_sent: "消息已发送。",
+    chat_send_failed: "发送消息失败。",
+    chat_req_message: "消息不能为空。",
     create_backup: "创建备份",
     export_backup: "导出备份",
     settings_close_behavior: "关闭窗口行为",
@@ -371,6 +438,7 @@ const I18N = {
     wizard_step: "第 {step} / 2 步",
     empty_no_agents: "暂无 Agent，点击“创建”开始。",
     empty_select_agent_controls: "请选择一个 Agent 查看状态和控制项。",
+    empty_select_agent_chat: "请选择一个 Agent 后开始对话。",
     empty_no_config: "暂无配置可显示。",
     empty_config_load_failed: "读取 config.json 失败。",
     empty_select_agent_edit: "请选择一个 Agent 后编辑配置。",
@@ -439,6 +507,7 @@ const I18N = {
     open_folder: "Открыть папку",
     delete: "Удалить",
     tab_dashboard: "Панель",
+    tab_chat: "Чат",
     tab_config: "Конфиг",
     tab_logs: "Логи",
     tab_backups: "Бэкапы",
@@ -493,6 +562,29 @@ const I18N = {
     refresh_logs: "Обновить логи",
     clear_logs: "Очистить логи",
     logs_scroll_bottom: "Прокрутить вниз",
+    chat_session_title: "Сессия чата",
+    chat_session_idle: "Нет активной сессии",
+    chat_new_session: "Новая сессия",
+    chat_reload: "Обновить",
+    chat_message: "Сообщение",
+    chat_send: "Отправить",
+    chat_input_placeholder: "Введите сообщение. Enter отправляет, Shift+Enter делает новую строку.",
+    chat_hint: "Для непрерывного диалога используется `4claw agent --session --message`.",
+    chat_empty: "Выберите агента и отправьте сообщение, чтобы начать диалог.",
+    chat_waiting: "Ожидание ответа агента...",
+    chat_user: "Вы",
+    chat_assistant: "Агент",
+    chat_tool: "Инструмент",
+    chat_system: "Система",
+    chat_unknown_role: "Сообщение",
+    chat_session_prefix: "Сессия",
+    chat_summary_prefix: "Сводка",
+    chat_message_count: "{count} сообщений",
+    chat_tool_calls: "Вызовы инструментов",
+    chat_new_session_ready: "Новая сессия чата создана.",
+    chat_message_sent: "Сообщение отправлено.",
+    chat_send_failed: "Не удалось отправить сообщение.",
+    chat_req_message: "Сообщение не может быть пустым.",
     create_backup: "Создать бэкап",
     export_backup: "Экспорт бэкапа",
     settings_close_behavior: "Поведение при закрытии окна",
@@ -514,6 +606,7 @@ const I18N = {
     wizard_step: "Шаг {step} / 2",
     empty_no_agents: "Агентов пока нет. Нажмите «Создать».",
     empty_select_agent_controls: "Выберите агента для просмотра состояния и управления.",
+    empty_select_agent_chat: "Выберите агента, чтобы начать чат.",
     empty_no_config: "Нет доступного конфига.",
     empty_config_load_failed: "Не удалось загрузить config.json.",
     empty_select_agent_edit: "Выберите агента для редактирования config.json.",
@@ -1286,10 +1379,17 @@ function applyLocale() {
   setText("openAgentFolderBtn", t("open_folder"));
   setText("deleteAgentBtn", t("delete"));
   setText("tabDashboardBtn", t("tab_dashboard"));
+  setText("tabChatBtn", t("tab_chat"));
   setText("tabConfigBtn", t("tab_config"));
   setText("tabLogsBtn", t("tab_logs"));
   setText("tabBackupsBtn", t("tab_backups"));
   setText("tabSettingsBtn", t("tab_settings"));
+  setText("chatSessionTitle", t("chat_session_title"));
+  setText("newChatSessionBtn", t("chat_new_session"));
+  setText("reloadChatBtn", t("chat_reload"));
+  setText("chatInputLabel", t("chat_message"));
+  setText("chatHintText", t("chat_hint"));
+  setText("sendChatBtn", t("chat_send"));
   setText("importConfigBtn", t("import_config"));
   setText("exportConfigBtn", t("export_config"));
   setText("reloadConfigBtn", t("reload"));
@@ -1362,6 +1462,9 @@ function applyLocale() {
   if (els.wizardApiBase) {
     els.wizardApiBase.placeholder = t("placeholder_api_base");
   }
+  if (els.chatInput) {
+    els.chatInput.placeholder = t("chat_input_placeholder");
+  }
 
   els.minimizeWindowBtn.title = t("win_minimize");
   els.closeWindowBtn.title = t("win_close");
@@ -1385,6 +1488,7 @@ function applyLocale() {
   renderSelectedTitle();
   renderAgentList();
   renderDashboard();
+  renderChatPane();
   renderConfigEditor();
   renderBackups();
   if (wizardState.open) {
@@ -1701,6 +1805,314 @@ function renderRuntimeInfo() {
   // Hidden by UI requirement.
 }
 
+function getChatRoleLabel(role) {
+  switch (String(role || "").trim()) {
+    case "user":
+      return t("chat_user");
+    case "assistant":
+      return t("chat_assistant");
+    case "tool":
+      return t("chat_tool");
+    case "system":
+      return t("chat_system");
+    default:
+      return t("chat_unknown_role");
+  }
+}
+
+function getActiveChatSessionKey(agentId = "") {
+  const targetId = String(agentId || state.selectedAgentId || "").trim();
+  if (!targetId) {
+    return "";
+  }
+  return String(state.chatSessionKeyByAgent[targetId] || "").trim();
+}
+
+function rememberChatSession(agentId, sessionKey) {
+  const targetId = String(agentId || "").trim();
+  const key = String(sessionKey || "").trim();
+  if (!targetId || !key) {
+    return;
+  }
+  state.chatSessionKeyByAgent[targetId] = key;
+}
+
+function scrollChatToBottom() {
+  if (!els.chatTimeline) {
+    return;
+  }
+  els.chatTimeline.scrollTop = els.chatTimeline.scrollHeight;
+}
+
+function truncateText(value, maxLength = 180) {
+  const text = String(value || "").trim();
+  if (!text || text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function withFallbackAssistantMessage(messages, replyText) {
+  const items = Array.isArray(messages) ? messages.slice() : [];
+  const reply = String(replyText || "").trim();
+  if (!reply) {
+    return items;
+  }
+  const hasAssistantReply = items.some(
+    (item) => String(item?.role || "") === "assistant" && String(item?.content || "").trim()
+  );
+  if (!hasAssistantReply) {
+    items.push({
+      role: "assistant",
+      content: reply,
+      toolCalls: []
+    });
+  }
+  return items;
+}
+
+function renderChatPane() {
+  const selected = getSelectedAgent();
+  if (!selected) {
+    els.chatSessionLabel.textContent = t("chat_session_idle");
+    els.chatTimeline.innerHTML = `<div class="chat-empty empty-state">${t("empty_select_agent_chat")}</div>`;
+    els.chatInput.value = "";
+    els.chatInput.disabled = true;
+    els.sendChatBtn.disabled = true;
+    els.newChatSessionBtn.disabled = true;
+    els.reloadChatBtn.disabled = true;
+    return;
+  }
+
+  const sessionKey = state.chatSession?.sessionKey || getActiveChatSessionKey(selected.id);
+  const messageCount = Array.isArray(state.chatMessages) ? state.chatMessages.length : 0;
+  const summary = truncateText(state.chatSession?.summary || "", 160);
+  const labelParts = [];
+  if (sessionKey) {
+    labelParts.push(`${t("chat_session_prefix")}: ${sessionKey}`);
+  }
+  labelParts.push(t("chat_message_count", { count: messageCount }));
+  if (summary) {
+    labelParts.push(`${t("chat_summary_prefix")}: ${summary}`);
+  }
+  els.chatSessionLabel.textContent = labelParts.length ? labelParts.join("\n") : t("chat_session_idle");
+  els.chatInput.disabled = state.chatSending;
+  els.sendChatBtn.disabled = state.chatSending;
+  els.newChatSessionBtn.disabled = state.chatSending;
+  els.reloadChatBtn.disabled = state.chatSending;
+  els.chatTimeline.classList.toggle("chat-sending", state.chatSending);
+
+  const messages = Array.isArray(state.chatMessages) ? state.chatMessages : [];
+  const fragment = document.createDocumentFragment();
+
+  if (!messages.length && !state.chatPendingMessage) {
+    const empty = document.createElement("div");
+    empty.className = "chat-empty empty-state";
+    empty.textContent = t("chat_empty");
+    fragment.appendChild(empty);
+  } else {
+    for (const message of messages) {
+      const row = document.createElement("div");
+      const role = String(message?.role || "assistant").trim() || "assistant";
+      row.className = `chat-row chat-row-${role}`;
+
+      const avatar = document.createElement("div");
+      avatar.className = `chat-avatar chat-avatar-${role}`;
+      avatar.textContent = getChatRoleLabel(role).slice(0, 1).toUpperCase();
+
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+
+      const head = document.createElement("div");
+      head.className = "chat-bubble-head";
+
+      const roleEl = document.createElement("div");
+      roleEl.className = "chat-role";
+      roleEl.textContent = getChatRoleLabel(role);
+
+      head.appendChild(roleEl);
+      bubble.appendChild(head);
+
+      const rawContent = String(message?.content || "");
+      if (rawContent) {
+        const content = document.createElement("div");
+        content.className = "chat-content";
+        content.textContent = rawContent;
+        bubble.appendChild(content);
+      }
+
+      if (Array.isArray(message?.toolCalls) && message.toolCalls.length) {
+        const details = document.createElement("details");
+        details.className = "chat-tool-calls";
+        const summaryEl = document.createElement("summary");
+        summaryEl.textContent = `${t("chat_tool_calls")} (${message.toolCalls.length})`;
+        details.appendChild(summaryEl);
+        for (const toolCall of message.toolCalls) {
+          const tool = document.createElement("pre");
+          tool.className = "chat-tool-call";
+          tool.textContent = JSON.stringify(toolCall, null, 2);
+          details.appendChild(tool);
+        }
+        bubble.appendChild(details);
+      }
+
+      if (!rawContent && (!Array.isArray(message?.toolCalls) || !message.toolCalls.length)) {
+        const content = document.createElement("div");
+        content.className = "chat-content";
+        content.textContent = " ";
+        bubble.appendChild(content);
+      }
+
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+      fragment.appendChild(row);
+    }
+  }
+
+  if (state.chatPendingMessage) {
+    const userRow = document.createElement("div");
+    userRow.className = "chat-row chat-row-user";
+    const userAvatar = document.createElement("div");
+    userAvatar.className = "chat-avatar chat-avatar-user";
+    userAvatar.textContent = getChatRoleLabel("user").slice(0, 1).toUpperCase();
+    const userBubble = document.createElement("div");
+    userBubble.className = "chat-bubble";
+    userBubble.innerHTML = `
+      <div class="chat-bubble-head">
+        <div class="chat-role">${t("chat_user")}</div>
+      </div>
+      <div class="chat-content"></div>
+    `;
+    userBubble.querySelector(".chat-content").textContent = state.chatPendingMessage;
+    userRow.appendChild(userAvatar);
+    userRow.appendChild(userBubble);
+    fragment.appendChild(userRow);
+
+    const waitingRow = document.createElement("div");
+    waitingRow.className = "chat-row chat-row-assistant";
+    waitingRow.innerHTML = `
+      <div class="chat-avatar chat-avatar-assistant">${getChatRoleLabel("assistant").slice(0, 1).toUpperCase()}</div>
+      <div class="chat-bubble">
+        <div class="chat-bubble-head">
+          <div class="chat-role">${t("chat_assistant")}</div>
+        </div>
+        <div class="chat-content">${t("chat_waiting")}</div>
+      </div>
+    `;
+    fragment.appendChild(waitingRow);
+  }
+
+  els.chatTimeline.innerHTML = "";
+  els.chatTimeline.appendChild(fragment);
+  requestAnimationFrame(() => scrollChatToBottom());
+}
+
+async function loadChatSession(agentId = "", { sessionKey = "", force = false } = {}) {
+  const targetId = String(agentId || state.selectedAgentId || "").trim();
+  if (!targetId) {
+    state.chatAgentId = "";
+    state.chatSession = null;
+    state.chatMessages = [];
+    state.chatPendingMessage = "";
+    renderChatPane();
+    return;
+  }
+
+  const requestSeq = ++chatLoadSeq;
+  const resolvedSessionKey = String(sessionKey || getActiveChatSessionKey(targetId) || "").trim();
+  try {
+    const payload = await api.getChatSession(targetId, resolvedSessionKey);
+    if (requestSeq !== chatLoadSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    if (!force && state.chatSending && targetId === state.chatAgentId) {
+      return;
+    }
+    state.chatAgentId = targetId;
+    state.chatSession = payload || null;
+    state.chatMessages = withFallbackAssistantMessage(payload?.messages, "");
+    state.chatPendingMessage = "";
+    rememberChatSession(targetId, payload?.sessionKey || resolvedSessionKey);
+    renderChatPane();
+  } catch (error) {
+    if (requestSeq !== chatLoadSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    showError(error);
+  }
+}
+
+async function createNewChatSession() {
+  const selected = ensureSelectedAgent();
+  if (!selected || state.chatSending) {
+    return;
+  }
+  try {
+    const payload = await api.createChatSession(selected.id);
+    rememberChatSession(selected.id, payload?.sessionKey || "");
+    state.chatAgentId = selected.id;
+    state.chatSession = payload || null;
+    state.chatMessages = withFallbackAssistantMessage(payload?.messages, "");
+    state.chatPendingMessage = "";
+    els.chatInput.value = "";
+    renderChatPane();
+    showInfo(t("chat_new_session_ready"));
+    els.chatInput.focus();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function sendChatMessage() {
+  const selected = ensureSelectedAgent();
+  if (!selected || state.chatSending) {
+    return;
+  }
+
+  const message = String(els.chatInput?.value || "").trim();
+  if (!message) {
+    showInfo(t("chat_req_message"));
+    els.chatInput?.focus();
+    return;
+  }
+
+  const targetId = selected.id;
+  const requestSeq = ++chatSendSeq;
+  const sessionKey = getActiveChatSessionKey(targetId);
+
+  state.chatSending = true;
+  state.chatPendingMessage = message;
+  renderChatPane();
+  els.chatInput.blur();
+
+  try {
+    const payload = await api.sendChatMessage(targetId, sessionKey, message);
+    if (requestSeq !== chatSendSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    rememberChatSession(targetId, payload?.sessionKey || sessionKey);
+    state.chatAgentId = targetId;
+    state.chatSession = payload?.session || null;
+    state.chatMessages = withFallbackAssistantMessage(payload?.session?.messages, payload?.reply || "");
+    state.chatPendingMessage = "";
+    els.chatInput.value = "";
+    renderChatPane();
+    els.chatInput.focus();
+  } catch (error) {
+    if (requestSeq !== chatSendSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    state.chatPendingMessage = "";
+    renderChatPane();
+    showError(error);
+  } finally {
+    if (requestSeq === chatSendSeq) {
+      state.chatSending = false;
+      renderChatPane();
+    }
+  }
+}
+
 function setTab(tabName) {
   state.selectedTab = tabName;
   for (const tab of els.tabs) {
@@ -1710,6 +2122,9 @@ function setTab(tabName) {
     pane.classList.toggle("active", key === tabName);
   }
 
+  if (tabName === "chat") {
+    loadChatSession();
+  }
   if (tabName === "logs") {
     refreshLogs();
   }
@@ -1921,6 +2336,12 @@ async function refreshAgents(keepSelection = true) {
   if (!state.selectedAgentId || (state.configAgentId === previous && state.selectedAgentId !== previous)) {
     state.configAgentId = "";
   }
+  if (!state.selectedAgentId || (state.chatAgentId === previous && state.selectedAgentId !== previous)) {
+    state.chatAgentId = "";
+    state.chatSession = null;
+    state.chatMessages = [];
+    state.chatPendingMessage = "";
+  }
   if (!state.selectedAgentId || (state.logsAgentId === previous && state.selectedAgentId !== previous)) {
     state.logsAgentId = "";
     state.logs = "";
@@ -1933,10 +2354,16 @@ async function refreshAgents(keepSelection = true) {
   renderAgentList();
   renderSelectedTitle();
   renderDashboard();
+  renderChatPane();
 }
 
 async function selectAgent(id) {
   state.selectedAgentId = id;
+  state.chatAgentId = "";
+  state.chatSession = null;
+  state.chatMessages = [];
+  state.chatPendingMessage = "";
+  renderChatPane();
   state.logsAgentId = "";
   state.logs = "";
   els.logViewer.textContent = "";
@@ -1946,7 +2373,7 @@ async function selectAgent(id) {
   renderAgentList();
   renderSelectedTitle();
   renderDashboard();
-  await Promise.all([loadConfig(id), refreshLogs(), refreshBackups()]);
+  await Promise.all([loadConfig(id), loadChatSession(id), refreshLogs(), refreshBackups()]);
 }
 
 function ensureConfigRoots(cfg) {
@@ -2745,6 +3172,25 @@ function bindEvents() {
     tab.addEventListener("click", () => setTab(tab.dataset.tab));
   });
 
+  els.newChatSessionBtn.addEventListener("click", () => {
+    createNewChatSession();
+  });
+
+  els.reloadChatBtn.addEventListener("click", () => {
+    loadChatSession();
+  });
+
+  els.sendChatBtn.addEventListener("click", () => {
+    sendChatMessage();
+  });
+
+  els.chatInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendChatMessage();
+    }
+  });
+
   els.quickConfigTabBtn.addEventListener("click", () => setConfigView("quick"));
   els.fullConfigTabBtn.addEventListener("click", () => setConfigView("full"));
 
@@ -2859,6 +3305,7 @@ function bindEvents() {
       state.selectedAgentId = "";
       await refreshAgents(false);
       await loadConfig();
+      await loadChatSession();
       await refreshLogs();
       await refreshBackups();
     } catch (error) {
@@ -3030,6 +3477,7 @@ async function boot() {
     await selectAgent(state.selectedAgentId);
   } else {
     await loadConfig();
+    await loadChatSession();
     await refreshLogs();
     await refreshBackups();
   }

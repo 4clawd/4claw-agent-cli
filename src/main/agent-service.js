@@ -50,6 +50,15 @@ function authStorePath() {
   return path.join(os.homedir(), ".4claw", "auth.json");
 }
 
+function sanitizeSessionFileName(sessionKey) {
+  return String(sessionKey || "").replace(/:/g, "_");
+}
+
+function createChatSessionKey(agentId) {
+  const safeAgentId = String(agentId || "agent").trim() || "agent";
+  return `agent:main:desktop:${safeAgentId}`;
+}
+
 class AgentService {
   constructor(app) {
     this.app = app;
@@ -458,6 +467,105 @@ class AgentService {
         startedAt: isRunning ? processInfo.startedAt : null
       }
     };
+  }
+
+  resolveAgentWorkspacePath(id) {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+    const cfg = readJson(agent.configPath, {});
+    const configuredWorkspace = String(cfg?.agents?.defaults?.workspace || "").trim();
+    return configuredWorkspace || agent.workspacePath;
+  }
+
+  resolveSessionStorageDir(id) {
+    return path.join(this.resolveAgentWorkspacePath(id), "sessions");
+  }
+
+  getChatSession(id, sessionKey = "") {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+    const resolvedSessionKey = String(sessionKey || createChatSessionKey(id)).trim() || createChatSessionKey(id);
+    const sessionPath = path.join(this.resolveSessionStorageDir(id), `${sanitizeSessionFileName(resolvedSessionKey)}.json`);
+    const payload = readJson(sessionPath, null);
+    const messages = Array.isArray(payload?.messages)
+      ? payload.messages
+          .filter((item) => item && typeof item === "object")
+          .map((item) => ({
+            role: String(item.role || "").trim() || "assistant",
+            content: String(item.content || ""),
+            toolCalls: Array.isArray(item.tool_calls) ? item.tool_calls : []
+          }))
+      : [];
+
+    return {
+      agentId: id,
+      sessionKey: resolvedSessionKey,
+      filePath: sessionPath,
+      exists: fs.existsSync(sessionPath),
+      summary: String(payload?.summary || ""),
+      updatedAt: String(payload?.updated || payload?.created || ""),
+      messages
+    };
+  }
+
+  createChatSession(id) {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+    const sessionKey = `agent:main:desktop:${id}:${Date.now()}`;
+    return this.getChatSession(id, sessionKey);
+  }
+
+  async sendChatMessage(id, sessionKey, message) {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+
+    const content = String(message || "").trim();
+    if (!content) {
+      throw new Error("Message is required");
+    }
+
+    const resolvedSessionKey = String(sessionKey || createChatSessionKey(id)).trim() || createChatSessionKey(id);
+    const result = await this.runBinaryCommand(
+      ["agent", "--config", agent.configPath, "--session", resolvedSessionKey, "--message", content],
+      { cwd: agent.dir, timeoutMs: 20 * 60 * 1000 }
+    );
+
+    const reply = this.extractAgentReply(result.stdout);
+    const session = this.getChatSession(id, resolvedSessionKey);
+    return {
+      agentId: id,
+      sessionKey: resolvedSessionKey,
+      reply,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      session
+    };
+  }
+
+  extractAgentReply(stdout) {
+    const text = String(stdout || "").replace(/\r/g, "").trim();
+    if (!text) {
+      return "";
+    }
+    if (text.startsWith("4C ")) {
+      return text.slice(3).trim();
+    }
+    const lines = text.split("\n").map((line) => line.trimEnd()).filter(Boolean);
+    if (!lines.length) {
+      return "";
+    }
+    if (lines[0].startsWith("4C ")) {
+      lines[0] = lines[0].slice(3);
+    }
+    return lines.join("\n").trim();
   }
 
   normalizeAgentId(name) {
