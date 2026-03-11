@@ -1963,7 +1963,9 @@ function renderChatPane() {
         bubble.appendChild(content);
       }
 
-      row.appendChild(avatar);
+      if (role !== "user") {
+        row.appendChild(avatar);
+      }
       row.appendChild(bubble);
       fragment.appendChild(row);
     }
@@ -1972,9 +1974,6 @@ function renderChatPane() {
   if (state.chatPendingMessage) {
     const userRow = document.createElement("div");
     userRow.className = "chat-row chat-row-user";
-    const userAvatar = document.createElement("div");
-    userAvatar.className = "chat-avatar chat-avatar-user";
-    userAvatar.textContent = getChatRoleLabel("user").slice(0, 1).toUpperCase();
     const userBubble = document.createElement("div");
     userBubble.className = "chat-bubble";
     userBubble.innerHTML = `
@@ -1984,7 +1983,6 @@ function renderChatPane() {
       <div class="chat-content"></div>
     `;
     userBubble.querySelector(".chat-content").textContent = state.chatPendingMessage;
-    userRow.appendChild(userAvatar);
     userRow.appendChild(userBubble);
     fragment.appendChild(userRow);
 
