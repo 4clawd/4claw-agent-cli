@@ -8,9 +8,12 @@ const state = {
   selectedAgentId: "",
   selectedTab: "dashboard",
   selectedConfigView: "quick",
+  configAgentId: "",
   configDraft: null,
   configOriginal: null,
+  logsAgentId: "",
   logs: "",
+  backupsAgentId: "",
   backups: [],
   settings: {
     closeBehavior: "ask",
@@ -117,6 +120,9 @@ let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
 let authSessionPollTimer = null;
 let activeAuthSessionId = "";
+let configLoadSeq = 0;
+let logsRefreshSeq = 0;
+let backupsRefreshSeq = 0;
 const AUTH_MODE_API_KEY = "api_key";
 const AUTH_MODE_OAUTH = "oauth";
 const CUSTOMER_PLATFORM = "__customer_platform__";
@@ -251,6 +257,7 @@ const I18N = {
     toast_backup_created: "Backup created.",
     toast_quick_saved: "Quick config saved.",
     toast_full_saved: "Full config saved.",
+    toast_config_resynced: "Agent changed while loading config. Config was reloaded for the current selection.",
     toast_config_imported: "Config imported.",
     toast_agent_created_started: "Agent created and started.",
     toast_backup_restored: "Backup restored.",
@@ -393,6 +400,7 @@ const I18N = {
     toast_backup_created: "备份已创建。",
     toast_quick_saved: "快速配置已保存。",
     toast_full_saved: "完整配置已保存。",
+    toast_config_resynced: "配置加载期间已切换 Agent，已按当前选择重新加载配置。",
     toast_config_imported: "配置导入完成。",
     toast_agent_created_started: "Agent 已创建并启动。",
     toast_backup_restored: "备份恢复成功。",
@@ -535,6 +543,7 @@ const I18N = {
     toast_backup_created: "Бэкап создан.",
     toast_quick_saved: "Быстрый конфиг сохранен.",
     toast_full_saved: "Полный конфиг сохранен.",
+    toast_config_resynced: "Во время загрузки конфигурации выбран другой агент. Конфиг перезагружен для текущего выбора.",
     toast_config_imported: "Конфиг импортирован.",
     toast_agent_created_started: "Агент создан и запущен.",
     toast_backup_restored: "Бэкап восстановлен.",
@@ -1909,6 +1918,17 @@ async function refreshAgents(keepSelection = true) {
   } else {
     state.selectedAgentId = previous;
   }
+  if (!state.selectedAgentId || (state.configAgentId === previous && state.selectedAgentId !== previous)) {
+    state.configAgentId = "";
+  }
+  if (!state.selectedAgentId || (state.logsAgentId === previous && state.selectedAgentId !== previous)) {
+    state.logsAgentId = "";
+    state.logs = "";
+  }
+  if (!state.selectedAgentId || (state.backupsAgentId === previous && state.selectedAgentId !== previous)) {
+    state.backupsAgentId = "";
+    state.backups = [];
+  }
 
   renderAgentList();
   renderSelectedTitle();
@@ -1917,10 +1937,16 @@ async function refreshAgents(keepSelection = true) {
 
 async function selectAgent(id) {
   state.selectedAgentId = id;
+  state.logsAgentId = "";
+  state.logs = "";
+  els.logViewer.textContent = "";
+  state.backupsAgentId = "";
+  state.backups = [];
+  renderBackups();
   renderAgentList();
   renderSelectedTitle();
   renderDashboard();
-  await Promise.all([loadConfig(), refreshLogs(), refreshBackups()]);
+  await Promise.all([loadConfig(id), refreshLogs(), refreshBackups()]);
 }
 
 function ensureConfigRoots(cfg) {
@@ -2077,6 +2103,11 @@ async function saveQuickConfig() {
   if (!selected || !state.configDraft) {
     return;
   }
+  if (state.configAgentId && state.configAgentId !== selected.id) {
+    await loadConfig(selected.id);
+    showInfo(t("toast_config_resynced"));
+    return;
+  }
 
   try {
     const quick = getQuickDataFromInputs();
@@ -2090,6 +2121,7 @@ async function saveQuickConfig() {
     }
 
     await api.saveConfig(selected.id, nextCfg);
+    state.configAgentId = selected.id;
     state.configDraft = safeClone(nextCfg);
     state.configOriginal = safeClone(nextCfg);
 
@@ -2101,9 +2133,10 @@ async function saveQuickConfig() {
   }
 }
 
-async function loadConfig() {
-  const selected = getSelectedAgent();
-  if (!selected) {
+async function loadConfig(agentId = "") {
+  const targetId = String(agentId || state.selectedAgentId || "").trim();
+  if (!targetId) {
+    state.configAgentId = "";
     state.configDraft = null;
     state.configOriginal = null;
     renderQuickConfig();
@@ -2111,13 +2144,23 @@ async function loadConfig() {
     return;
   }
 
+  const requestSeq = ++configLoadSeq;
+
   try {
-    const cfg = await api.loadConfig(selected.id);
+    const cfg = await api.loadConfig(targetId);
+    if (requestSeq !== configLoadSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    state.configAgentId = targetId;
     state.configOriginal = safeClone(cfg);
     state.configDraft = safeClone(cfg);
     renderQuickConfig();
     renderConfigEditor();
   } catch (error) {
+    if (requestSeq !== configLoadSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    state.configAgentId = "";
     showError(error);
     renderQuickConfig();
     els.configEditor.innerHTML = `<div class="empty-state">${t("empty_config_load_failed")}</div>`;
@@ -2129,8 +2172,14 @@ async function saveConfig() {
   if (!selected || !state.configDraft) {
     return;
   }
+  if (state.configAgentId && state.configAgentId !== selected.id) {
+    await loadConfig(selected.id);
+    showInfo(t("toast_config_resynced"));
+    return;
+  }
   try {
     await api.saveConfig(selected.id, state.configDraft);
+    state.configAgentId = selected.id;
     state.configOriginal = safeClone(state.configDraft);
     showInfo(t("toast_full_saved"));
     await refreshAgents(true);
@@ -2421,40 +2470,61 @@ function scrollLogsToBottom() {
 }
 
 async function refreshLogs() {
-  if (logsRefreshInFlight) {
-    return;
-  }
-  const selected = getSelectedAgent();
-  if (!selected) {
+  const targetId = String(state.selectedAgentId || "").trim();
+  if (!targetId) {
+    state.logsAgentId = "";
+    state.logs = "";
     els.logViewer.textContent = "";
     return;
   }
+  const requestSeq = ++logsRefreshSeq;
   logsRefreshInFlight = true;
   try {
     const shouldStickToBottom =
       Math.abs(els.logViewer.scrollHeight - els.logViewer.scrollTop - els.logViewer.clientHeight) < 40;
-    state.logs = await api.getLogs(selected.id, 3500);
+    const nextLogs = await api.getLogs(targetId, 3500);
+    if (requestSeq !== logsRefreshSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    state.logsAgentId = targetId;
+    state.logs = nextLogs;
     els.logViewer.textContent = state.logs || "";
     if (shouldStickToBottom) {
       els.logViewer.scrollTop = els.logViewer.scrollHeight;
     }
   } catch (error) {
+    if (requestSeq !== logsRefreshSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
     showError(error);
   } finally {
-    logsRefreshInFlight = false;
+    if (requestSeq === logsRefreshSeq) {
+      logsRefreshInFlight = false;
+    }
   }
 }
 
 async function refreshBackups() {
-  const selected = getSelectedAgent();
-  if (!selected) {
+  const targetId = String(state.selectedAgentId || "").trim();
+  if (!targetId) {
+    state.backupsAgentId = "";
+    state.backups = [];
     els.backupList.innerHTML = `<div class="empty-state">${t("empty_select_agent_backups")}</div>`;
     return;
   }
+  const requestSeq = ++backupsRefreshSeq;
   try {
-    state.backups = await api.listBackups(selected.id);
+    const nextBackups = await api.listBackups(targetId);
+    if (requestSeq !== backupsRefreshSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
+    state.backupsAgentId = targetId;
+    state.backups = nextBackups;
     renderBackups();
   } catch (error) {
+    if (requestSeq !== backupsRefreshSeq || targetId !== state.selectedAgentId) {
+      return;
+    }
     showError(error);
   }
 }
