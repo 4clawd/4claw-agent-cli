@@ -474,9 +474,7 @@ class AgentService {
     if (!agent) {
       throw new Error(`Agent ${id} does not exist`);
     }
-    const cfg = readJson(agent.configPath, {});
-    const configuredWorkspace = String(cfg?.agents?.defaults?.workspace || "").trim();
-    return configuredWorkspace || agent.workspacePath;
+    return agent.workspacePath;
   }
 
   resolveSessionStorageDir(id) {
@@ -730,6 +728,9 @@ class AgentService {
       throw new Error("config.json 不存在");
     }
 
+    const normalized = this.normalizeConfigForAgent(agent, readJson(agent.configPath, {}));
+    writeJson(agent.configPath, normalized.config);
+
     const binary = this.resolveBinaryPath();
     if (!binary.found) {
       throw new Error(
@@ -805,21 +806,63 @@ class AgentService {
   loadConfig(id) {
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
     const cfg = readJson(agent.configPath);
     if (!cfg) {
-      throw new Error("config.json 读取失败或格式错误");
+      throw new Error("config.json failed to load or is invalid");
     }
-    return cfg;
+    const normalized = this.normalizeConfigForAgent(agent, cfg);
+    if (normalized.changed) {
+      writeJson(agent.configPath, normalized.config);
+    }
+    return normalized.config;
+  }
+
+  normalizeConfigForAgent(agent, data) {
+    const cfg =
+      data && typeof data === "object" && !Array.isArray(data) ? JSON.parse(JSON.stringify(data)) : {};
+    let changed = false;
+
+    if (!cfg.agents || typeof cfg.agents !== "object") {
+      cfg.agents = {};
+      changed = true;
+    }
+    if (!cfg.agents.defaults || typeof cfg.agents.defaults !== "object") {
+      cfg.agents.defaults = {};
+      changed = true;
+    }
+    if (cfg.agents.defaults.workspace !== agent.workspacePath) {
+      cfg.agents.defaults.workspace = agent.workspacePath;
+      changed = true;
+    }
+
+    if (!cfg.gateway || typeof cfg.gateway !== "object") {
+      cfg.gateway = {};
+      changed = true;
+    }
+
+    const otherPorts = this.usedPortsExcept(agent.id);
+    const current = readJson(agent.configPath, {});
+    const currentPort =
+      current && current.gateway && Number.isInteger(current.gateway.port) && !otherPorts.has(current.gateway.port)
+        ? current.gateway.port
+        : null;
+    if (!Number.isInteger(cfg.gateway.port) || otherPorts.has(cfg.gateway.port)) {
+      cfg.gateway.port = currentPort || this.nextPort();
+      changed = true;
+    }
+
+    return { config: cfg, changed };
   }
 
   saveConfig(id, data) {
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
-    writeJson(agent.configPath, data);
+    const normalized = this.normalizeConfigForAgent(agent, data);
+    writeJson(agent.configPath, normalized.config);
     const meta = readJson(path.join(agent.dir, "meta.json"), agent.meta);
     meta.updatedAt = nowISO();
     writeJson(path.join(agent.dir, "meta.json"), meta);
@@ -864,28 +907,7 @@ class AgentService {
       throw new Error("Config file must be a JSON object");
     }
 
-    const current = this.loadConfig(id);
-    const cfg = incoming;
-    if (!cfg.agents || typeof cfg.agents !== "object") {
-      cfg.agents = {};
-    }
-    if (!cfg.agents.defaults || typeof cfg.agents.defaults !== "object") {
-      cfg.agents.defaults = {};
-    }
-    cfg.agents.defaults.workspace = agent.workspacePath;
-
-    if (!cfg.gateway || typeof cfg.gateway !== "object") {
-      cfg.gateway = {};
-    }
-    const otherPorts = this.usedPortsExcept(id);
-    const candidate = cfg.gateway.port;
-    if (!Number.isInteger(candidate) || otherPorts.has(candidate)) {
-      if (current && current.gateway && Number.isInteger(current.gateway.port) && !otherPorts.has(current.gateway.port)) {
-        cfg.gateway.port = current.gateway.port;
-      } else {
-        cfg.gateway.port = this.nextPort();
-      }
-    }
+    const cfg = this.normalizeConfigForAgent(agent, incoming).config;
 
     writeJson(agent.configPath, cfg);
     const meta = readJson(path.join(agent.dir, "meta.json"), agent.meta);
@@ -1007,20 +1029,8 @@ class AgentService {
     writeJson(metaPath, meta);
 
     const configPath = path.join(destDir, "config.json");
-    const cfg = readJson(configPath, this.loadTemplateConfig());
-    if (!cfg.agents) {
-      cfg.agents = {};
-    }
-    if (!cfg.agents.defaults) {
-      cfg.agents.defaults = {};
-    }
-    cfg.agents.defaults.workspace = path.join(destDir, "workspace");
-    if (!cfg.gateway) {
-      cfg.gateway = {};
-    }
-    if (!Number.isInteger(cfg.gateway.port) || this.usedPorts().has(cfg.gateway.port)) {
-      cfg.gateway.port = this.nextPort();
-    }
+    const importedAgent = this.getAgent(newId);
+    const cfg = this.normalizeConfigForAgent(importedAgent, readJson(configPath, this.loadTemplateConfig())).config;
     writeJson(configPath, cfg);
 
     fs.rmSync(tempRoot, { recursive: true, force: true });

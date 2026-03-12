@@ -2191,7 +2191,7 @@ function renderAgentList() {
         } else {
           await api.startAgent(agent.id);
         }
-        await refreshAgents(false);
+        await refreshCurrentSelection();
       } catch (error) {
         showError(error);
       }
@@ -2277,7 +2277,7 @@ function renderDashboard() {
       } else {
         await api.startAgent(selected.id);
       }
-      await refreshAgents(false);
+      await refreshCurrentSelection();
     } catch (error) {
       showError(error);
     }
@@ -2353,6 +2353,22 @@ async function refreshAgents(keepSelection = true) {
   renderSelectedTitle();
   renderDashboard();
   renderChatPane();
+}
+
+async function refreshCurrentSelection() {
+  const currentId = String(state.selectedAgentId || "").trim();
+  await refreshAgents(true);
+  if (currentId && state.selectedAgentId === currentId) {
+    await selectAgent(currentId);
+  }
+}
+
+async function restartAgentIfRunning(agentId, shouldRestart) {
+  if (!shouldRestart) {
+    return;
+  }
+  await api.stopAgent(agentId);
+  await api.startAgent(agentId);
 }
 
 async function selectAgent(id) {
@@ -2539,6 +2555,7 @@ async function saveQuickConfig() {
     if (!validateModelInputs(quick, "quick")) {
       return;
     }
+    const wasRunning = Boolean(selected.status?.running);
     const nextCfg = applyQuickDataToConfig(safeClone(state.configDraft), quick);
 
     if (quick.agentName && quick.agentName !== (selected.meta.name || selected.id)) {
@@ -2546,12 +2563,12 @@ async function saveQuickConfig() {
     }
 
     await api.saveConfig(selected.id, nextCfg);
+    await restartAgentIfRunning(selected.id, wasRunning);
     state.configAgentId = selected.id;
     state.configDraft = safeClone(nextCfg);
     state.configOriginal = safeClone(nextCfg);
 
-    await refreshAgents(true);
-    await selectAgent(selected.id);
+    await refreshCurrentSelection();
     showInfo(t("toast_quick_saved"));
   } catch (error) {
     showError(error);
@@ -2603,11 +2620,13 @@ async function saveConfig() {
     return;
   }
   try {
+    const wasRunning = Boolean(selected.status?.running);
     await api.saveConfig(selected.id, state.configDraft);
+    await restartAgentIfRunning(selected.id, wasRunning);
     state.configAgentId = selected.id;
     state.configOriginal = safeClone(state.configDraft);
     showInfo(t("toast_full_saved"));
-    await refreshAgents(true);
+    await refreshCurrentSelection();
   } catch (error) {
     showError(error);
   }
@@ -3267,7 +3286,7 @@ function bindEvents() {
 
   els.refreshAgentsBtn.addEventListener("click", async () => {
     try {
-      await refreshAgents(true);
+      await refreshCurrentSelection();
     } catch (error) {
       showError(error);
     }
@@ -3317,11 +3336,12 @@ function bindEvents() {
       return;
     }
     try {
+      const wasRunning = Boolean(selected.status?.running);
       const out = await api.importConfig(selected.id);
       if (out) {
+        await restartAgentIfRunning(selected.id, wasRunning);
         showInfo(t("toast_config_imported"));
-        await refreshAgents(true);
-        await loadConfig();
+        await refreshCurrentSelection();
       }
     } catch (error) {
       showError(error);
