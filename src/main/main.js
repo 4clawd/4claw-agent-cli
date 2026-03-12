@@ -1,15 +1,39 @@
 ﻿const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 const electronModule = require("electron");
+
+
+function normalizeBootstrapArgs(args, cwd) {
+  const launchCwd = String(cwd || process.cwd() || "").trim() || process.cwd();
+  return (Array.isArray(args) ? args : []).map((arg) => {
+    const value = String(arg || "");
+    if (!value || value.startsWith("-")) {
+      return value;
+    }
+    if (path.isAbsolute(value)) {
+      return value;
+    }
+    const resolved = path.resolve(launchCwd, value);
+    if (fs.existsSync(resolved)) {
+      return resolved;
+    }
+    if (value === ".") {
+      return launchCwd;
+    }
+    return value;
+  });
+}
 
 if (typeof electronModule === "string") {
   // Some environments set ELECTRON_RUN_AS_NODE globally.
   const relaunchEnv = { ...process.env };
   delete relaunchEnv.ELECTRON_RUN_AS_NODE;
-  const child = spawn(electronModule, process.argv.slice(1), {
+  const child = spawn(electronModule, normalizeBootstrapArgs(process.argv.slice(1), process.cwd()), {
     stdio: "inherit",
-    env: relaunchEnv
+    env: relaunchEnv,
+    cwd: process.cwd()
   });
   child.on("close", (code) => process.exit(code || 0));
   return;
@@ -27,7 +51,7 @@ let appSettings = { closeBehavior: "ask", language: "en" };
 let privilegeState = { elevated: false, label: "standard" };
 const ELEVATION_FLAG = "--4claw-elevated-launch";
 const ELEVATION_ENV = "FOURCLAW_ELEVATION_ATTEMPTED";
-
+const ELEVATION_MARKER_PATH = path.join(os.tmpdir(), "4claw-cli-elevation-marker.json");
 const MAIN_I18N = {
   en: {
     trayOpenPanel: "Open Panel",
@@ -191,19 +215,51 @@ function escapeAppleScriptString(value) {
     .replace(/"/g, '\\"');
 }
 
+function normalizeLaunchArgs(args, cwd) {
+  const launchCwd = String(cwd || process.cwd() || "").trim() || process.cwd();
+  return (Array.isArray(args) ? args : []).map((arg) => {
+    const value = String(arg || "");
+    if (!value || value.startsWith("-")) {
+      return value;
+    }
+
+    if (path.isAbsolute(value)) {
+      return value;
+    }
+
+    const resolved = path.resolve(launchCwd, value);
+    if (fs.existsSync(resolved)) {
+      return resolved;
+    }
+
+    if (value === ".") {
+      return launchCwd;
+    }
+
+    return value;
+  });
+}
+
 function getLaunchCommand() {
+  const cwd = process.cwd();
+  const portableExecutable = process.platform === "win32" ? String(process.env.PORTABLE_EXECUTABLE_FILE || "").trim() : "";
+  const portableDirectory = process.platform === "win32" ? String(process.env.PORTABLE_EXECUTABLE_DIR || "").trim() : "";
   if (app.isPackaged) {
+    const file = portableExecutable || process.execPath;
+    const launchCwd = portableDirectory || path.dirname(file) || cwd;
     return {
-      file: process.execPath,
-      args: process.argv.slice(1)
+      file,
+      args: normalizeLaunchArgs(process.argv.slice(1), cwd),
+      cwd: launchCwd
     };
   }
 
   const electronBinary = process.execPath;
-  const argv = process.argv.slice(1);
+  const argv = normalizeLaunchArgs(process.argv.slice(1), cwd);
   return {
     file: electronBinary,
-    args: argv
+    args: argv,
+    cwd
   };
 }
 
@@ -251,6 +307,10 @@ function shouldAskForElevation() {
   if (privilegeState.elevated) {
     return false;
   }
+  if (hasRecentElevationMarker()) {
+    clearElevationMarker();
+    return false;
+  }
   if (process.argv.includes(ELEVATION_FLAG)) {
     return false;
   }
@@ -260,10 +320,51 @@ function shouldAskForElevation() {
   return true;
 }
 
+function writeElevationMarker() {
+  try {
+    fs.writeFileSync(
+      ELEVATION_MARKER_PATH,
+      JSON.stringify({
+        createdAt: Date.now(),
+        pid: process.pid,
+        execPath: process.execPath,
+        portableExecutable: process.env.PORTABLE_EXECUTABLE_FILE || ""
+      }),
+      "utf8"
+    );
+  } catch {}
+}
+
+function clearElevationMarker() {
+  try {
+    if (fs.existsSync(ELEVATION_MARKER_PATH)) {
+      fs.unlinkSync(ELEVATION_MARKER_PATH);
+    }
+  } catch {}
+}
+
+function hasRecentElevationMarker() {
+  try {
+    if (!fs.existsSync(ELEVATION_MARKER_PATH)) {
+      return false;
+    }
+    const payload = JSON.parse(fs.readFileSync(ELEVATION_MARKER_PATH, "utf8"));
+    const createdAt = Number(payload?.createdAt || 0);
+    if (!Number.isFinite(createdAt) || createdAt <= 0) {
+      return false;
+    }
+    return Date.now() - createdAt < 2 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
 function relaunchElevated() {
   const launch = getLaunchCommand();
   const args = [...launch.args.filter((item) => item !== ELEVATION_FLAG), ELEVATION_FLAG];
   const env = { ...process.env, [ELEVATION_ENV]: "1" };
+  const workingDirectory = String(launch.cwd || process.cwd() || "").trim() || process.cwd();
+  writeElevationMarker();
 
   if (process.platform === "win32") {
     const argList = args.map((item) => `'${escapePowerShellString(item)}'`).join(",");
@@ -271,6 +372,7 @@ function relaunchElevated() {
       "Start-Process",
       `-FilePath '${escapePowerShellString(launch.file)}'`,
       argList ? `-ArgumentList ${argList}` : "",
+      `-WorkingDirectory '${escapePowerShellString(workingDirectory)}'`,
       "-Verb RunAs"
     ]
       .filter(Boolean)
@@ -284,19 +386,25 @@ function relaunchElevated() {
       child.stderr.on("data", (chunk) => {
         stderr += String(chunk);
       });
-      child.on("error", reject);
+      child.on("error", (error) => {
+        clearElevationMarker();
+        reject(error);
+      });
       child.on("close", (code) => {
         if (code === 0) {
           resolve(true);
           return;
         }
+        clearElevationMarker();
         reject(new Error(stderr.trim() || `Elevation request failed with code ${code}`));
       });
     });
   }
 
   if (process.platform === "darwin") {
-    const command = `nohup ${quoteForShell(launch.file)} ${args.map(quoteForShell).join(" ")} >/dev/null 2>&1 &`;
+    const command = `cd ${quoteForShell(workingDirectory)} && nohup ${quoteForShell(launch.file)} ${args
+      .map(quoteForShell)
+      .join(" ")} >/dev/null 2>&1 &`;
     const appleScript = `do shell script "${escapeAppleScriptString(command)}" with administrator privileges`;
     return new Promise((resolve, reject) => {
       const child = spawn("osascript", ["-e", appleScript], {
@@ -306,12 +414,16 @@ function relaunchElevated() {
       child.stderr.on("data", (chunk) => {
         stderr += String(chunk);
       });
-      child.on("error", reject);
+      child.on("error", (error) => {
+        clearElevationMarker();
+        reject(error);
+      });
       child.on("close", (code) => {
         if (code === 0) {
           resolve(true);
           return;
         }
+        clearElevationMarker();
         reject(new Error(stderr.trim() || `Elevation request failed with code ${code}`));
       });
     });
@@ -335,10 +447,14 @@ function relaunchElevated() {
     new Promise((resolve, reject) => {
       const child = spawn(command, commandArgs, {
         env,
+        cwd: workingDirectory,
         detached: true,
         stdio: "ignore"
       });
-      child.on("error", reject);
+      child.on("error", (error) => {
+        clearElevationMarker();
+        reject(error);
+      });
       child.on("spawn", () => {
         child.unref();
         resolve(true);
@@ -777,3 +893,4 @@ app.on("before-quit", async () => {
     tray = null;
   }
 });
+
