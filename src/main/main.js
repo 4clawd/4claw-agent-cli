@@ -24,6 +24,9 @@ let tray = null;
 let isQuitting = false;
 let closeChoiceInProgress = false;
 let appSettings = { closeBehavior: "ask", language: "en" };
+let privilegeState = { elevated: false, label: "standard" };
+const ELEVATION_FLAG = "--4claw-elevated-launch";
+const ELEVATION_ENV = "FOURCLAW_ELEVATION_ATTEMPTED";
 
 const MAIN_I18N = {
   en: {
@@ -36,7 +39,18 @@ const MAIN_I18N = {
     closeBtnExit: "Exit Completely",
     closeBtnMinimize: "Minimize to Tray",
     closeBtnCancel: "Cancel",
-    closeRemember: "Remember this choice"
+    closeRemember: "Remember this choice",
+    elevateTitle: "Launch 4claw CLI With Administrator Privileges",
+    elevateMessage: "Do you want to relaunch 4claw CLI with administrator/root privileges?",
+    elevateDetail:
+      "The system will show its own security prompt. If you continue, 4claw CLI and any agent started from it will run with elevated privileges.",
+    elevateBtnYes: "Relaunch Elevated",
+    elevateBtnNo: "Continue Normally",
+    elevateFailedTitle: "Elevation Failed",
+    elevateFailedMessage: "4claw CLI could not relaunch with elevated privileges.",
+    privilegeAdmin: "Administrator",
+    privilegeRoot: "root",
+    privilegeStandard: "standard"
   },
   "zh-CN": {
     trayOpenPanel: "打开面板",
@@ -48,7 +62,17 @@ const MAIN_I18N = {
     closeBtnExit: "彻底退出",
     closeBtnMinimize: "最小化运行",
     closeBtnCancel: "取消",
-    closeRemember: "记住本次选择"
+    closeRemember: "记住本次选择",
+    elevateTitle: "以管理员权限启动 4claw CLI",
+    elevateMessage: "是否要以管理员/root 权限重新启动 4claw CLI？",
+    elevateDetail: "系统会弹出自己的安全确认窗口。继续后，4claw CLI 以及它启动的 agent 都会以高权限运行。",
+    elevateBtnYes: "重新以高权限启动",
+    elevateBtnNo: "继续普通启动",
+    elevateFailedTitle: "提权失败",
+    elevateFailedMessage: "4claw CLI 未能以高权限重新启动。",
+    privilegeAdmin: "管理员",
+    privilegeRoot: "root",
+    privilegeStandard: "普通权限"
   },
   ru: {
     trayOpenPanel: "Открыть панель",
@@ -60,7 +84,18 @@ const MAIN_I18N = {
     closeBtnExit: "Полный выход",
     closeBtnMinimize: "Свернуть в трей",
     closeBtnCancel: "Отмена",
-    closeRemember: "Запомнить выбор"
+    closeRemember: "Запомнить выбор",
+    elevateTitle: "Запуск 4claw CLI с правами администратора",
+    elevateMessage: "Перезапустить 4claw CLI с правами администратора/root?",
+    elevateDetail:
+      "Система покажет собственный запрос безопасности. Если продолжить, 4claw CLI и все агенты, запущенные из него, будут работать с повышенными правами.",
+    elevateBtnYes: "Перезапустить с повышением",
+    elevateBtnNo: "Продолжить обычно",
+    elevateFailedTitle: "Не удалось повысить права",
+    elevateFailedMessage: "Не удалось перезапустить 4claw CLI с повышенными правами.",
+    privilegeAdmin: "Администратор",
+    privilegeRoot: "root",
+    privilegeStandard: "Обычные права"
   }
 };
 function getMainText() {
@@ -139,6 +174,221 @@ function stripUtf8Bom(text) {
     return "";
   }
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+function quoteForShell(value) {
+  const text = String(value || "");
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function escapePowerShellString(value) {
+  return String(value || "").replace(/'/g, "''");
+}
+
+function escapeAppleScriptString(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
+function getLaunchCommand() {
+  if (app.isPackaged) {
+    return {
+      file: process.execPath,
+      args: process.argv.slice(1)
+    };
+  }
+
+  const electronBinary = process.execPath;
+  const argv = process.argv.slice(1);
+  return {
+    file: electronBinary,
+    args: argv
+  };
+}
+
+function detectPrivilegeState() {
+  if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      const child = spawn(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; if (([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'true' } else { 'false' }"
+        ],
+        { windowsHide: true }
+      );
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        output += String(chunk);
+      });
+      child.on("close", () => {
+        const elevated = output.trim().toLowerCase() === "true";
+        resolve({
+          elevated,
+          label: elevated ? getMainText().privilegeAdmin : getMainText().privilegeStandard
+        });
+      });
+      child.on("error", () =>
+        resolve({
+          elevated: false,
+          label: getMainText().privilegeStandard
+        })
+      );
+    });
+  }
+
+  const elevated = typeof process.getuid === "function" ? process.getuid() === 0 : false;
+  return Promise.resolve({
+    elevated,
+    label: elevated ? getMainText().privilegeRoot : getMainText().privilegeStandard
+  });
+}
+
+function shouldAskForElevation() {
+  if (privilegeState.elevated) {
+    return false;
+  }
+  if (process.argv.includes(ELEVATION_FLAG)) {
+    return false;
+  }
+  if (process.env[ELEVATION_ENV] === "1") {
+    return false;
+  }
+  return true;
+}
+
+function relaunchElevated() {
+  const launch = getLaunchCommand();
+  const args = [...launch.args.filter((item) => item !== ELEVATION_FLAG), ELEVATION_FLAG];
+  const env = { ...process.env, [ELEVATION_ENV]: "1" };
+
+  if (process.platform === "win32") {
+    const argList = args.map((item) => `'${escapePowerShellString(item)}'`).join(",");
+    const command = [
+      "Start-Process",
+      `-FilePath '${escapePowerShellString(launch.file)}'`,
+      argList ? `-ArgumentList ${argList}` : "",
+      "-Verb RunAs"
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return new Promise((resolve, reject) => {
+      const child = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Command", command], {
+        windowsHide: true,
+        env
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve(true);
+          return;
+        }
+        reject(new Error(stderr.trim() || `Elevation request failed with code ${code}`));
+      });
+    });
+  }
+
+  if (process.platform === "darwin") {
+    const command = `nohup ${quoteForShell(launch.file)} ${args.map(quoteForShell).join(" ")} >/dev/null 2>&1 &`;
+    const appleScript = `do shell script "${escapeAppleScriptString(command)}" with administrator privileges`;
+    return new Promise((resolve, reject) => {
+      const child = spawn("osascript", ["-e", appleScript], {
+        env
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve(true);
+          return;
+        }
+        reject(new Error(stderr.trim() || `Elevation request failed with code ${code}`));
+      });
+    });
+  }
+
+  const envArgs = ["env"];
+  for (const [key, value] of Object.entries({
+    DISPLAY: process.env.DISPLAY || "",
+    XAUTHORITY: process.env.XAUTHORITY || "",
+    WAYLAND_DISPLAY: process.env.WAYLAND_DISPLAY || "",
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "",
+    ...env
+  })) {
+    if (value) {
+      envArgs.push(`${key}=${value}`);
+    }
+  }
+  envArgs.push(launch.file, ...args);
+
+  const spawnDetached = (command, commandArgs) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(command, commandArgs, {
+        env,
+        detached: true,
+        stdio: "ignore"
+      });
+      child.on("error", reject);
+      child.on("spawn", () => {
+        child.unref();
+        resolve(true);
+      });
+    });
+
+  return spawnDetached("pkexec", envArgs).catch((error) => {
+    if (error && error.code !== "ENOENT") {
+      throw error;
+    }
+    return spawnDetached("sudo", ["-E", launch.file, ...args]);
+  });
+}
+
+async function maybePromptForElevation() {
+  if (!shouldAskForElevation()) {
+    return;
+  }
+
+  const text = getMainText();
+  const result = await dialog.showMessageBox({
+    type: "question",
+    buttons: [text.elevateBtnYes, text.elevateBtnNo],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    title: text.elevateTitle,
+    message: text.elevateMessage,
+    detail: text.elevateDetail
+  });
+
+  if (result.response !== 0) {
+    return;
+  }
+
+  try {
+    await relaunchElevated();
+    isQuitting = true;
+    app.quit();
+  } catch (error) {
+    await dialog.showMessageBox({
+      type: "error",
+      buttons: ["OK"],
+      defaultId: 0,
+      noLink: true,
+      title: text.elevateFailedTitle,
+      message: text.elevateFailedMessage,
+      detail: error && error.message ? error.message : String(error)
+    });
+  }
 }
 
 function loadModelCatalog() {
@@ -345,6 +595,7 @@ function setupIpc() {
     return {
       platform: process.platform,
       arch: process.arch,
+      privilege: privilegeState,
       userData: agentService.paths.userData,
       runtimeRoot: agentService.paths.root,
       settings: appSettings,
@@ -464,24 +715,38 @@ function setupIpc() {
 
 app.whenReady().then(() => {
   loadSettings();
-  Menu.setApplicationMenu(null);
+  detectPrivilegeState()
+    .then((state) => {
+      privilegeState = state;
+    })
+    .catch(() => {
+      privilegeState = { elevated: false, label: getMainText().privilegeStandard };
+    })
+    .finally(async () => {
+      Menu.setApplicationMenu(null);
 
-  const appIcon = resolveImage(resolveAppIconPath());
-  if (process.platform === "darwin" && appIcon && !appIcon.isEmpty() && app.dock) {
-    app.dock.setIcon(appIcon);
-  }
+      const appIcon = resolveImage(resolveAppIconPath());
+      if (process.platform === "darwin" && appIcon && !appIcon.isEmpty() && app.dock) {
+        app.dock.setIcon(appIcon);
+      }
 
-  agentService = new AgentService(app);
-  setupIpc();
-  createWindow();
+      await maybePromptForElevation();
+      if (isQuitting) {
+        return;
+      }
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+      agentService = new AgentService(app);
+      setupIpc();
       createWindow();
-    } else {
-      showMainWindow();
-    }
-  });
+
+      app.on("activate", () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+        } else {
+          showMainWindow();
+        }
+      });
+    });
 });
 
 app.on("window-all-closed", () => {
