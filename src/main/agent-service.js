@@ -218,14 +218,7 @@ class AgentService {
       return this.startOpenAIDeviceCodeLogin();
     }
 
-    const result = await this.runBinaryCommand(["auth", "login", "--provider", normalizedProvider]);
-    return {
-      mode: "browser",
-      provider: normalizedProvider,
-      status: "success",
-      ...result,
-      authStatus: this.getAuthStatus()
-    };
+    return this.startBrowserOAuthLogin(normalizedProvider);
   }
 
   findPendingAuthSession(provider) {
@@ -244,6 +237,14 @@ class AgentService {
     return {
       deviceUrl: urlMatch ? String(urlMatch[1] || "").trim() : "",
       userCode: codeMatch ? String(codeMatch[1] || "").trim() : ""
+    };
+  }
+
+  parseBrowserOAuthOutput(text) {
+    const source = String(text || "").replace(/\r/g, "");
+    const urlMatch = source.match(/Open this URL to authenticate:\s+([^\s]+)/i);
+    return {
+      deviceUrl: urlMatch ? String(urlMatch[1] || "").trim() : ""
     };
   }
 
@@ -394,6 +395,120 @@ class AgentService {
     });
   }
 
+  async startBrowserOAuthLogin(provider) {
+    const existing = this.findPendingAuthSession(provider);
+    if (existing) {
+      return this.serializeAuthSession(existing);
+    }
+
+    const binary = this.resolveBinaryPath();
+    if (!binary.found) {
+      throw new Error(`4claw executable not found: ${binary.binaryName}`);
+    }
+
+    const session = {
+      id: `auth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      provider,
+      mode: "browser_link",
+      status: "starting",
+      deviceUrl: "",
+      userCode: "",
+      stdout: "",
+      stderr: "",
+      error: "",
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    };
+    this.authSessions.set(session.id, session);
+
+    const child = spawn(binary.resolvedPath, ["auth", "login", "--provider", provider], {
+      cwd: this.paths.root,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        FOURCLAW_NO_BROWSER: "1"
+      }
+    });
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const maybeResolvePending = () => {
+        const parsed = this.parseBrowserOAuthOutput(`${session.stdout}\n${session.stderr}`);
+        if (!session.deviceUrl && parsed.deviceUrl) {
+          session.deviceUrl = parsed.deviceUrl;
+        }
+        if (!settled && session.deviceUrl) {
+          this.updateAuthSession(session, { status: "pending" });
+          settled = true;
+          resolve(this.serializeAuthSession(session));
+        }
+      };
+
+      child.stdout.on("data", (chunk) => {
+        session.stdout += String(chunk);
+        maybeResolvePending();
+      });
+
+      child.stderr.on("data", (chunk) => {
+        session.stderr += String(chunk);
+        maybeResolvePending();
+      });
+
+      child.on("error", (error) => {
+        this.updateAuthSession(session, {
+          status: "error",
+          error: error.message || String(error)
+        });
+        this.scheduleAuthSessionCleanup(session.id);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          this.updateAuthSession(session, { status: "success" });
+          this.scheduleAuthSessionCleanup(session.id);
+          if (!settled) {
+            settled = true;
+            resolve(this.serializeAuthSession(session));
+          }
+          return;
+        }
+
+        const message = (session.stderr || session.stdout || `4claw exited with code ${code}`).trim();
+        this.updateAuthSession(session, {
+          status: "error",
+          error: message
+        });
+        this.scheduleAuthSessionCleanup(session.id);
+        if (!settled) {
+          settled = true;
+          reject(new Error(message));
+        }
+      });
+
+      setTimeout(() => {
+        maybeResolvePending();
+        if (!settled && !session.deviceUrl) {
+          const message = "Unable to read OAuth login URL from 4claw output.";
+          this.updateAuthSession(session, {
+            status: "error",
+            error: message
+          });
+          this.scheduleAuthSessionCleanup(session.id);
+          settled = true;
+          try {
+            child.kill("SIGTERM");
+          } catch {}
+          reject(new Error(message));
+        }
+      }, 5000);
+    });
+  }
+
   templateConfigPath() {
     const candidates = [
       path.join(this.app.getAppPath(), "assets", "default-config.json"),
@@ -499,6 +614,18 @@ class AgentService {
     return this.extractAgentReply(String(text || "").replace(/\u0000/g, ""));
   }
 
+  isChatWorkerWritable(worker) {
+    return Boolean(
+      worker &&
+        worker.proc &&
+        worker.proc.exitCode === null &&
+        !worker.proc.killed &&
+        worker.proc.stdin &&
+        !worker.proc.stdin.destroyed &&
+        worker.proc.stdin.writable
+    );
+  }
+
   async stopChatWorker(id) {
     const worker = this.getChatWorker(id);
     if (!worker) {
@@ -570,10 +697,14 @@ class AgentService {
       throw new Error(`4claw executable not found: ${binary.binaryName}`);
     }
 
-    const child = spawn(binary.resolvedPath, ["agent", "--config", agent.configPath, "--session", resolvedSessionKey], {
-      cwd: agent.dir,
-      windowsHide: true
-    });
+    const child = spawn(
+      binary.resolvedPath,
+      ["agent", "--config", agent.configPath, "--session", resolvedSessionKey, "--pipe-mode"],
+      {
+        cwd: agent.dir,
+        windowsHide: true
+      }
+    );
 
     const worker = {
       id,
@@ -755,44 +886,84 @@ class AgentService {
     }
 
     const resolvedSessionKey = String(sessionKey || createChatSessionKey(id)).trim() || createChatSessionKey(id);
-    const worker = await this.startChatWorker(id, resolvedSessionKey);
-    if (worker.pending) {
-      throw new Error("Chat worker is busy processing another message");
-    }
-
-    const reply = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (worker.pending && worker.pending.reject === reject) {
-          worker.pending = null;
-        }
-        reject(new Error("Chat worker timed out while waiting for a reply"));
-      }, 20 * 60 * 1000);
-
-      worker.pending = {
-        timer,
-        resolve,
-        reject
-      };
-      worker.responseBuffer = "";
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const worker = await this.startChatWorker(id, resolvedSessionKey);
+      if (worker.pending) {
+        throw new Error("Chat worker is busy processing another message");
+      }
+      if (!this.isChatWorkerWritable(worker)) {
+        await this.stopChatWorker(id);
+        lastError = new Error("Chat worker is not writable");
+        continue;
+      }
 
       try {
-        worker.proc.stdin.write(`${content}\n`);
-      } catch (error) {
-        clearTimeout(timer);
-        worker.pending = null;
-        reject(error);
-      }
-    });
+        const reply = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            if (worker.pending && worker.pending.reject === reject) {
+              worker.pending = null;
+            }
+            cleanup();
+            reject(new Error("Chat worker timed out while waiting for a reply"));
+          }, 20 * 60 * 1000);
 
-    const session = this.getChatSession(id, resolvedSessionKey);
-    return {
-      agentId: id,
-      sessionKey: resolvedSessionKey,
-      reply,
-      stdout: "",
-      stderr: "",
-      session
-    };
+          const handleStreamError = (error) => {
+            cleanup();
+            if (worker.pending && worker.pending.reject === reject) {
+              worker.pending = null;
+            }
+            reject(error);
+          };
+
+          const cleanup = () => {
+            clearTimeout(timer);
+            worker.proc.stdin?.removeListener("error", handleStreamError);
+          };
+
+          worker.pending = {
+            timer,
+            resolve: (value) => {
+              cleanup();
+              resolve(value);
+            },
+            reject: (error) => {
+              cleanup();
+              reject(error);
+            }
+          };
+          worker.responseBuffer = "";
+          worker.proc.stdin.once("error", handleStreamError);
+
+          try {
+            worker.proc.stdin.write(`${content}\n`);
+          } catch (error) {
+            cleanup();
+            worker.pending = null;
+            reject(error);
+          }
+        });
+
+        const session = this.getChatSession(id, resolvedSessionKey);
+        return {
+          agentId: id,
+          sessionKey: resolvedSessionKey,
+          reply,
+          stdout: "",
+          stderr: "",
+          session
+        };
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0) {
+          this.appendAgentLog(id, `[CHAT] worker write failed, restarting: ${error.message}`);
+          await this.stopChatWorker(id).catch(() => {});
+          continue;
+        }
+      }
+    }
+
+    throw lastError || new Error("Chat worker failed to send message");
   }
 
   extractAgentReply(stdout) {

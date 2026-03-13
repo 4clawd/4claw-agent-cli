@@ -117,9 +117,11 @@ const els = {
   oauthDeviceTitle: document.getElementById("oauthDeviceTitle"),
   oauthDeviceState: document.getElementById("oauthDeviceState"),
   oauthDeviceIntro: document.getElementById("oauthDeviceIntro"),
+  oauthDeviceUrlCard: document.getElementById("oauthDeviceUrlCard"),
   oauthDeviceUrlLabel: document.getElementById("oauthDeviceUrlLabel"),
   oauthDeviceUrl: document.getElementById("oauthDeviceUrl"),
   oauthDeviceOpenBtn: document.getElementById("oauthDeviceOpenBtn"),
+  oauthDeviceCodeCard: document.getElementById("oauthDeviceCodeCard"),
   oauthDeviceCodeLabel: document.getElementById("oauthDeviceCodeLabel"),
   oauthDeviceCode: document.getElementById("oauthDeviceCode"),
   oauthDeviceCopyBtn: document.getElementById("oauthDeviceCopyBtn"),
@@ -137,6 +139,7 @@ let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
 let authSessionPollTimer = null;
 let activeAuthSessionId = "";
+let currentAuthSession = null;
 let configLoadSeq = 0;
 let chatLoadSeq = 0;
 let chatSendSeq = 0;
@@ -199,10 +202,12 @@ const I18N = {
     oauth_needs_refresh: "Needs refresh",
     oauth_expired: "Expired",
     oauth_login_browser: "A browser window should open to complete OAuth login.",
+    oauth_login_browser_manual: "Open the login link shown in the dialog to complete OAuth login.",
     oauth_login_device_code: "Device code login started. Complete verification with the URL and code shown.",
     oauth_login_success: "OAuth login completed.",
     oauth_login_required: "Complete OAuth login before continuing.",
     oauth_device_title: "OpenAI Device Login",
+    oauth_browser_title: "OAuth Login Link",
     oauth_device_waiting: "Waiting for verification",
     oauth_device_pending: "Waiting for completion",
     oauth_device_success: "Authenticated",
@@ -210,10 +215,14 @@ const I18N = {
     oauth_device_code: "User Code",
     oauth_device_open: "Open Page",
     oauth_device_copy: "Copy Code",
+    oauth_browser_copy: "Copy Link",
     oauth_device_close: "Close",
     oauth_device_intro: "Open the verification page and enter the one-time code below.",
+    oauth_browser_intro: "Open the login link below in your browser and complete the OAuth flow there.",
     oauth_device_hint: "Keep this dialog open until login completes.",
+    oauth_browser_hint: "Keep this dialog open while the browser login is in progress.",
     oauth_device_code_copied: "Device code copied.",
+    oauth_browser_link_copied: "Login link copied.",
     channel_platform: "Channel Platform",
     channel_config: "Channel Config",
     channel_no_fields: "No configurable fields in default-config for this platform.",
@@ -375,10 +384,12 @@ const I18N = {
     oauth_needs_refresh: "即将刷新",
     oauth_expired: "已过期",
     oauth_login_browser: "将打开浏览器完成 OAuth 登录。",
+    oauth_login_browser_manual: "请打开弹窗中的登录链接来完成 OAuth 登录。",
     oauth_login_device_code: "已启动 Device Code 登录，请使用弹窗中的地址和验证码完成认证。",
     oauth_login_success: "OAuth 登录已完成。",
     oauth_login_required: "请先完成 OAuth 登录。",
     oauth_device_title: "OpenAI Device Code 登录",
+    oauth_browser_title: "OAuth 登录链接",
     oauth_device_waiting: "等待验证码",
     oauth_device_pending: "等待完成",
     oauth_device_success: "已认证",
@@ -386,10 +397,14 @@ const I18N = {
     oauth_device_code: "用户验证码",
     oauth_device_open: "打开页面",
     oauth_device_copy: "复制验证码",
+    oauth_browser_copy: "复制链接",
     oauth_device_close: "关闭",
     oauth_device_intro: "打开验证页面，并输入下方一次性验证码。",
+    oauth_browser_intro: "请在浏览器中打开下方链接，并在那里完成 OAuth 登录。",
     oauth_device_hint: "请保持此弹窗开启，直到登录完成。",
+    oauth_browser_hint: "请保持此弹窗开启，等待浏览器中的登录完成。",
     oauth_device_code_copied: "验证码已复制。",
+    oauth_browser_link_copied: "登录链接已复制。",
     channel_platform: "通讯平台",
     channel_config: "平台配置",
     channel_no_fields: "该平台在 default-config 中没有可配置字段。",
@@ -551,10 +566,12 @@ const I18N = {
     oauth_needs_refresh: "Требует обновления",
     oauth_expired: "Срок истек",
     oauth_login_browser: "Для завершения OAuth-авторизации должно открыться окно браузера.",
+    oauth_login_browser_manual: "Откройте ссылку из диалога, чтобы завершить OAuth-авторизацию.",
     oauth_login_device_code: "Запущен вход по device code. Завершите авторизацию по ссылке и коду из окна.",
     oauth_login_success: "OAuth-авторизация завершена.",
     oauth_login_required: "Сначала завершите OAuth-авторизацию.",
     oauth_device_title: "Вход OpenAI через Device Code",
+    oauth_browser_title: "Ссылка для OAuth-входа",
     oauth_device_waiting: "Ожидание подтверждения",
     oauth_device_pending: "Ожидание завершения",
     oauth_device_success: "Авторизовано",
@@ -562,10 +579,14 @@ const I18N = {
     oauth_device_code: "Код пользователя",
     oauth_device_open: "Открыть страницу",
     oauth_device_copy: "Копировать код",
+    oauth_browser_copy: "Копировать ссылку",
     oauth_device_close: "Закрыть",
     oauth_device_intro: "Откройте страницу подтверждения и введите одноразовый код ниже.",
+    oauth_browser_intro: "Откройте ссылку ниже в браузере и завершите OAuth-авторизацию там.",
     oauth_device_hint: "Не закрывайте это окно до завершения входа.",
+    oauth_browser_hint: "Не закрывайте это окно, пока вход в браузере не завершится.",
     oauth_device_code_copied: "Код скопирован.",
+    oauth_browser_link_copied: "Ссылка для входа скопирована.",
     channel_platform: "Платформа связи",
     channel_config: "Конфиг платформы",
     channel_no_fields: "Для этой платформы нет настраиваемых полей в default-config.",
@@ -739,6 +760,7 @@ function normalizeModelCatalog(raw) {
             provider: String(oauth.provider || "").trim(),
             modelProtocol: String(oauth.model_protocol || "").trim().toLowerCase(),
             authMethod: String(oauth.auth_method || AUTH_MODE_OAUTH).trim() || AUTH_MODE_OAUTH,
+            baseUrl: String(oauth.base_url || "").trim(),
             flow: String(oauth.flow || "").trim().toLowerCase()
           }
         }
@@ -891,10 +913,15 @@ function applyAuthMethodSelection(scope) {
   const platform = getPlatformById(form.platform.value || "");
   const oauth = getOAuthMetadata(platform);
   const isOAuth = form.authMethod.value === AUTH_MODE_OAUTH && Boolean(oauth);
+  const displayedBaseUrl = isOAuth ? oauth?.baseUrl || platform?.baseUrl || "" : platform?.baseUrl || "";
 
   form.apiKey.disabled = isOAuth;
   form.apiKey.closest(".quick-field")?.classList.toggle("hidden", isOAuth);
   form.oauthPanel.classList.toggle("hidden", !isOAuth);
+  if (form.apiBase && platform && form.platform.value !== CUSTOMER_PLATFORM) {
+    form.apiBase.value = displayedBaseUrl;
+    form.apiBase.readOnly = true;
+  }
   if (form.oauthLoginBtn) {
     form.oauthLoginBtn.disabled = !oauth;
   }
@@ -980,9 +1007,6 @@ function applyModelSelection(scope, { preserveCustomName = false, preserveAuthMo
     applyAuthMethodSelection(scope);
     return;
   }
-
-  form.apiBase.value = platform.baseUrl || "";
-  form.apiBase.readOnly = true;
 
   if (preset === CUSTOMER_MODEL) {
     form.modelName.readOnly = false;
@@ -1700,12 +1724,16 @@ function renderOAuthDeviceModal(session) {
   if (!els.oauthDeviceModal) {
     return;
   }
+  currentAuthSession = session || null;
+  const isBrowserLink = session?.mode === "browser_link";
   if (els.oauthDeviceTitle) {
-    els.oauthDeviceTitle.textContent = t("oauth_device_title");
+    els.oauthDeviceTitle.textContent = t(isBrowserLink ? "oauth_browser_title" : "oauth_device_title");
   }
   if (els.oauthDeviceIntro) {
-    els.oauthDeviceIntro.textContent = t("oauth_device_intro");
+    els.oauthDeviceIntro.textContent = t(isBrowserLink ? "oauth_browser_intro" : "oauth_device_intro");
   }
+  els.oauthDeviceUrlCard?.classList.remove("hidden");
+  els.oauthDeviceCodeCard?.classList.toggle("hidden", isBrowserLink);
   if (els.oauthDeviceUrlLabel) {
     els.oauthDeviceUrlLabel.textContent = t("oauth_device_url");
   }
@@ -1717,15 +1745,18 @@ function renderOAuthDeviceModal(session) {
     els.oauthDeviceOpenBtn.disabled = !session?.deviceUrl;
   }
   if (els.oauthDeviceCopyBtn) {
-    els.oauthDeviceCopyBtn.textContent = t("oauth_device_copy");
-    els.oauthDeviceCopyBtn.disabled = !session?.userCode;
+    els.oauthDeviceCopyBtn.textContent = t(isBrowserLink ? "oauth_browser_copy" : "oauth_device_copy");
+    els.oauthDeviceCopyBtn.disabled = isBrowserLink ? !session?.deviceUrl : !session?.userCode;
   }
   if (els.oauthDeviceCloseBtn) {
     els.oauthDeviceCloseBtn.textContent = t("oauth_device_close");
   }
   if (els.oauthDeviceHint) {
-    els.oauthDeviceHint.textContent =
-      session?.status === "success" ? t("oauth_login_success") : t("oauth_device_hint");
+    if (session?.status === "success") {
+      els.oauthDeviceHint.textContent = t("oauth_login_success");
+    } else {
+      els.oauthDeviceHint.textContent = t(isBrowserLink ? "oauth_browser_hint" : "oauth_device_hint");
+    }
   }
   if (els.oauthDeviceState) {
     els.oauthDeviceState.textContent = session?.error || getDeviceSessionStateText(session?.status || "");
@@ -1744,6 +1775,7 @@ function openOAuthDeviceModal(session) {
 }
 
 function closeOAuthDeviceModal() {
+  currentAuthSession = null;
   els.oauthDeviceModal?.classList.add("hidden");
 }
 
@@ -1832,6 +1864,12 @@ async function triggerOAuthLogin(scope) {
           await api.openExternal(result.deviceUrl);
         } catch {}
       }
+      return;
+    }
+    if (result?.mode === "browser_link") {
+      openOAuthDeviceModal(result);
+      startAuthSessionPolling(result.sessionId || result.id);
+      showInfo(t("oauth_login_browser_manual"));
       return;
     }
     await refreshAuthStatus();
@@ -3334,13 +3372,16 @@ function bindEvents() {
     }
   });
   els.oauthDeviceCopyBtn?.addEventListener("click", async () => {
-    const code = els.oauthDeviceCode?.textContent || "";
-    if (!code) {
+    const value =
+      currentAuthSession?.mode === "browser_link"
+        ? els.oauthDeviceUrl?.textContent || ""
+        : els.oauthDeviceCode?.textContent || "";
+    if (!value) {
       return;
     }
     try {
-      await copyTextToClipboard(code);
-      showInfo(t("oauth_device_code_copied"));
+      await copyTextToClipboard(value);
+      showInfo(t(currentAuthSession?.mode === "browser_link" ? "oauth_browser_link_copied" : "oauth_device_code_copied"));
     } catch (error) {
       showError(error);
     }

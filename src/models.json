@@ -39,6 +39,7 @@
         "provider": "google-antigravity",
         "model_protocol": "antigravity",
         "auth_method": "oauth",
+        "base_url": "https://cloudcode-pa.googleapis.com",
         "flow": "browser"
       }
     }
