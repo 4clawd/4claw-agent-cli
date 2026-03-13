@@ -53,6 +53,7 @@ const els = {
   },
   chatTimeline: document.getElementById("chatTimeline"),
   chatSessionTitle: document.getElementById("chatSessionTitle"),
+  chatRuntimeBadge: document.getElementById("chatRuntimeBadge"),
   chatSessionLabel: document.getElementById("chatSessionLabel"),
   newChatSessionBtn: document.getElementById("newChatSessionBtn"),
   reloadChatBtn: document.getElementById("reloadChatBtn"),
@@ -233,7 +234,7 @@ const I18N = {
     chat_message: "Message",
     chat_send: "Send",
     chat_input_placeholder: "Type a message. Enter to send, Shift+Enter for a new line.",
-    chat_hint: "Uses `4claw agent --session --message` to keep the conversation continuous.",
+    chat_hint: "Chat uses a resident worker tied to agent runtime. Start the agent first; when the agent stops, chat is unavailable.",
     chat_empty: "Select an agent, then send a message to start the conversation.",
     chat_waiting: "Waiting for agent reply...",
     chat_user: "You",
@@ -245,6 +246,10 @@ const I18N = {
     chat_summary_prefix: "Summary",
     chat_message_count: "{count} messages",
     chat_tool_calls: "Tool calls",
+    chat_runtime_prefix: "Runtime",
+    chat_runtime_running: "Background Agent Running",
+    chat_runtime_stopped: "Agent Stopped",
+    chat_start_agent_first: "Start the agent first to enable chat.",
     chat_new_session_ready: "New chat session created.",
     chat_message_sent: "Message sent.",
     chat_send_failed: "Message sending failed.",
@@ -405,7 +410,7 @@ const I18N = {
     chat_message: "消息",
     chat_send: "发送",
     chat_input_placeholder: "输入消息。回车发送，Shift+Enter 换行。",
-    chat_hint: "当前通过 `4claw agent --session --message` 持续保持上下文会话。",
+    chat_hint: "当前聊天使用跟随 Agent 生命周期的常驻 worker。请先启动 Agent；Agent 停止后，对话不可用。",
     chat_empty: "请选择一个 Agent，然后发送消息开始对话。",
     chat_waiting: "正在等待 Agent 回复...",
     chat_user: "你",
@@ -417,6 +422,10 @@ const I18N = {
     chat_summary_prefix: "摘要",
     chat_message_count: "{count} 条消息",
     chat_tool_calls: "工具调用",
+    chat_runtime_prefix: "运行态",
+    chat_runtime_running: "后台 Agent 运行中",
+    chat_runtime_stopped: "Agent 未运行",
+    chat_start_agent_first: "请先启动 Agent，才能使用对话。",
     chat_new_session_ready: "新对话会话已创建。",
     chat_message_sent: "消息已发送。",
     chat_send_failed: "发送消息失败。",
@@ -577,7 +586,7 @@ const I18N = {
     chat_message: "Сообщение",
     chat_send: "Отправить",
     chat_input_placeholder: "Введите сообщение. Enter отправляет, Shift+Enter делает новую строку.",
-    chat_hint: "Для непрерывного диалога используется `4claw agent --session --message`.",
+    chat_hint: "Для чата используется резидентный worker, связанный с жизненным циклом agent. Сначала запустите agent; после его остановки чат недоступен.",
     chat_empty: "Выберите агента и отправьте сообщение, чтобы начать диалог.",
     chat_waiting: "Ожидание ответа агента...",
     chat_user: "Вы",
@@ -589,6 +598,10 @@ const I18N = {
     chat_summary_prefix: "Сводка",
     chat_message_count: "{count} сообщений",
     chat_tool_calls: "Вызовы инструментов",
+    chat_runtime_prefix: "Состояние",
+    chat_runtime_running: "Фоновый agent запущен",
+    chat_runtime_stopped: "Agent остановлен",
+    chat_start_agent_first: "Сначала запустите agent, чтобы открыть чат.",
     chat_new_session_ready: "Новая сессия чата создана.",
     chat_message_sent: "Сообщение отправлено.",
     chat_send_failed: "Не удалось отправить сообщение.",
@@ -1923,6 +1936,8 @@ function withFallbackAssistantMessage(messages, replyText) {
 function renderChatPane() {
   const selected = getSelectedAgent();
   if (!selected) {
+    els.chatRuntimeBadge.textContent = t("chat_runtime_stopped");
+    els.chatRuntimeBadge.className = "chat-runtime-badge chat-runtime-stopped";
     els.chatSessionLabel.textContent = t("chat_session_idle");
     els.chatTimeline.innerHTML = `<div class="chat-empty empty-state">${t("empty_select_agent_chat")}</div>`;
     els.chatInput.value = "";
@@ -1936,7 +1951,12 @@ function renderChatPane() {
   const sessionKey = state.chatSession?.sessionKey || getActiveChatSessionKey(selected.id);
   const messageCount = Array.isArray(state.chatMessages) ? state.chatMessages.length : 0;
   const summary = truncateText(state.chatSession?.summary || "", 160);
+  const runtimeLabel = selected.status?.running ? t("chat_runtime_running") : t("chat_runtime_stopped");
+  const runtimeClass = selected.status?.running
+    ? "chat-runtime-badge chat-runtime-running"
+    : "chat-runtime-badge chat-runtime-stopped";
   const labelParts = [];
+  labelParts.push(`${t("chat_runtime_prefix")}: ${runtimeLabel}`);
   if (sessionKey) {
     labelParts.push(`${t("chat_session_prefix")}: ${sessionKey}`);
   }
@@ -1944,11 +1964,13 @@ function renderChatPane() {
   if (summary) {
     labelParts.push(`${t("chat_summary_prefix")}: ${summary}`);
   }
+  els.chatRuntimeBadge.textContent = runtimeLabel;
+  els.chatRuntimeBadge.className = runtimeClass;
   els.chatSessionLabel.textContent = labelParts.length ? labelParts.join("\n") : t("chat_session_idle");
-  els.chatInput.disabled = state.chatSending;
-  els.sendChatBtn.disabled = state.chatSending;
-  els.newChatSessionBtn.disabled = state.chatSending;
-  els.reloadChatBtn.disabled = state.chatSending;
+  els.chatInput.disabled = state.chatSending || !selected.status?.running;
+  els.sendChatBtn.disabled = state.chatSending || !selected.status?.running;
+  els.newChatSessionBtn.disabled = state.chatSending || !selected.status?.running;
+  els.reloadChatBtn.disabled = state.chatSending || !selected.status?.running;
   els.chatTimeline.classList.toggle("chat-sending", state.chatSending);
 
   const messages = Array.isArray(state.chatMessages) ? state.chatMessages : [];
@@ -2094,6 +2116,10 @@ async function createNewChatSession() {
   if (!selected || state.chatSending) {
     return;
   }
+  if (!selected.status?.running) {
+    showInfo(t("chat_start_agent_first"));
+    return;
+  }
   try {
     const payload = await api.createChatSession(selected.id);
     rememberChatSession(selected.id, payload?.sessionKey || "");
@@ -2113,6 +2139,10 @@ async function createNewChatSession() {
 async function sendChatMessage() {
   const selected = ensureSelectedAgent();
   if (!selected || state.chatSending) {
+    return;
+  }
+  if (!selected.status?.running) {
+    showInfo(t("chat_start_agent_first"));
     return;
   }
 

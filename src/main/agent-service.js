@@ -63,6 +63,7 @@ class AgentService {
   constructor(app) {
     this.app = app;
     this.running = new Map();
+    this.chatWorkers = new Map();
     this.authSessions = new Map();
     this.paths = this.initPaths();
   }
@@ -481,6 +482,220 @@ class AgentService {
     return path.join(this.resolveAgentWorkspacePath(id), "sessions");
   }
 
+  appendAgentLog(id, line) {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      return;
+    }
+    fs.mkdirSync(path.dirname(agent.logPath), { recursive: true });
+    fs.appendFileSync(agent.logPath, `[${nowISO()}] ${line}\n`, "utf8");
+  }
+
+  getChatWorker(id) {
+    return this.chatWorkers.get(String(id || "").trim()) || null;
+  }
+
+  normalizeInteractiveReply(text) {
+    return this.extractAgentReply(String(text || "").replace(/\u0000/g, ""));
+  }
+
+  async stopChatWorker(id) {
+    const worker = this.getChatWorker(id);
+    if (!worker) {
+      return false;
+    }
+
+    this.chatWorkers.delete(id);
+
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      };
+
+      try {
+        worker.proc.removeAllListeners("exit");
+        worker.proc.once("exit", finish);
+        if (process.platform === "win32") {
+          const killer = spawn("taskkill", ["/PID", String(worker.proc.pid), "/T", "/F"], { windowsHide: true });
+          killer.once("exit", () => setTimeout(finish, 120));
+          killer.once("error", () => {
+            try {
+              worker.proc.kill("SIGTERM");
+            } catch {}
+            setTimeout(finish, 500);
+          });
+        } else {
+          worker.proc.kill("SIGTERM");
+          setTimeout(() => {
+            try {
+              worker.proc.kill("SIGKILL");
+            } catch {}
+          }, 1200);
+          setTimeout(finish, 1800);
+        }
+      } catch {
+        finish();
+      }
+
+      setTimeout(finish, 2500);
+    });
+
+    return true;
+  }
+
+  async startChatWorker(id, sessionKey = "") {
+    const agent = this.getAgent(id);
+    if (!agent) {
+      throw new Error(`Agent ${id} does not exist`);
+    }
+    if (!agent.status?.running) {
+      throw new Error("Agent must be running before chat is available");
+    }
+
+    const resolvedSessionKey = String(sessionKey || createChatSessionKey(id)).trim() || createChatSessionKey(id);
+    const existing = this.getChatWorker(id);
+    if (existing && existing.sessionKey === resolvedSessionKey && existing.ready && !existing.proc.killed) {
+      return existing;
+    }
+    if (existing) {
+      await this.stopChatWorker(id);
+    }
+
+    const binary = this.resolveBinaryPath();
+    if (!binary.found) {
+      throw new Error(`4claw executable not found: ${binary.binaryName}`);
+    }
+
+    const child = spawn(binary.resolvedPath, ["agent", "--config", agent.configPath, "--session", resolvedSessionKey], {
+      cwd: agent.dir,
+      windowsHide: true
+    });
+
+    const worker = {
+      id,
+      sessionKey: resolvedSessionKey,
+      proc: child,
+      ready: false,
+      startupBuffer: "",
+      responseBuffer: "",
+      pending: null,
+      startedAt: nowISO()
+    };
+    this.chatWorkers.set(id, worker);
+    this.appendAgentLog(id, `[CHAT] worker starting pid=${child.pid} session=${resolvedSessionKey}`);
+
+    const promptToken = "4C You:";
+
+    const flushPendingFromBuffer = () => {
+      if (!worker.pending) {
+        return;
+      }
+      const promptIndex = worker.responseBuffer.lastIndexOf(promptToken);
+      if (promptIndex === -1) {
+        return;
+      }
+      const raw = worker.responseBuffer.slice(0, promptIndex);
+      worker.responseBuffer = worker.responseBuffer.slice(promptIndex + promptToken.length);
+      const pending = worker.pending;
+      worker.pending = null;
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+      }
+      pending.resolve(this.normalizeInteractiveReply(raw));
+    };
+
+    child.stdout.on("data", (chunk) => {
+      const text = String(chunk || "").replace(/\r/g, "");
+      if (!text) {
+        return;
+      }
+      this.appendAgentLog(id, `[CHAT-STDOUT] ${text.trimEnd()}`);
+
+      if (!worker.ready) {
+        worker.startupBuffer += text;
+        if (worker.startupBuffer.includes(promptToken)) {
+          worker.ready = true;
+          if (worker.readyResolver) {
+            worker.readyResolver(worker);
+            worker.readyResolver = null;
+          }
+          worker.startupBuffer = "";
+        }
+        return;
+      }
+
+      worker.responseBuffer += text;
+      flushPendingFromBuffer();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      const text = String(chunk || "").replace(/\r/g, "").trimEnd();
+      if (text) {
+        this.appendAgentLog(id, `[CHAT-STDERR] ${text}`);
+      }
+    });
+
+    child.on("error", (error) => {
+      this.appendAgentLog(id, `[CHAT-ERROR] ${error.message}`);
+      if (worker.pending) {
+        const pending = worker.pending;
+        worker.pending = null;
+        if (pending.timer) {
+          clearTimeout(pending.timer);
+        }
+        pending.reject(error);
+      }
+      if (worker.readyResolver) {
+        worker.readyRejecter(error);
+        worker.readyResolver = null;
+        worker.readyRejecter = null;
+      }
+      this.chatWorkers.delete(id);
+    });
+
+    child.on("close", (code, signal) => {
+      this.appendAgentLog(id, `[CHAT] worker exited code=${code} signal=${signal || "none"}`);
+      if (worker.pending) {
+        const pending = worker.pending;
+        worker.pending = null;
+        if (pending.timer) {
+          clearTimeout(pending.timer);
+        }
+        pending.reject(new Error(`Chat worker exited with code ${code}`));
+      }
+      if (worker.readyResolver) {
+        worker.readyRejecter(new Error(`Chat worker exited with code ${code}`));
+        worker.readyResolver = null;
+        worker.readyRejecter = null;
+      }
+      this.chatWorkers.delete(id);
+    });
+
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (worker.ready) {
+          resolve(worker);
+          return;
+        }
+        this.stopChatWorker(id).catch(() => {});
+        reject(new Error("Timed out while starting chat worker"));
+      }, 15000);
+
+      worker.readyResolver = (readyWorker) => {
+        clearTimeout(timer);
+        resolve(readyWorker);
+      };
+      worker.readyRejecter = (error) => {
+        clearTimeout(timer);
+        reject(error);
+      };
+    });
+  }
+
   getChatSession(id, sessionKey = "") {
     const agent = this.getAgent(id);
     if (!agent) {
@@ -506,16 +721,22 @@ class AgentService {
       exists: fs.existsSync(sessionPath),
       summary: String(payload?.summary || ""),
       updatedAt: String(payload?.updated || payload?.created || ""),
-      messages
+      messages,
+      workerReady: Boolean(this.getChatWorker(id)?.ready),
+      workerSessionKey: String(this.getChatWorker(id)?.sessionKey || "")
     };
   }
 
-  createChatSession(id) {
+  async createChatSession(id) {
     const agent = this.getAgent(id);
     if (!agent) {
       throw new Error(`Agent ${id} does not exist`);
     }
+    if (!agent.status?.running) {
+      throw new Error("Start the agent first. Chat is unavailable while the agent is stopped.");
+    }
     const sessionKey = `agent:main:desktop:${id}:${Date.now()}`;
+    await this.startChatWorker(id, sessionKey);
     return this.getChatSession(id, sessionKey);
   }
 
@@ -524,6 +745,9 @@ class AgentService {
     if (!agent) {
       throw new Error(`Agent ${id} does not exist`);
     }
+    if (!agent.status?.running) {
+      throw new Error("Start the agent first. Chat is unavailable while the agent is stopped.");
+    }
 
     const content = String(message || "").trim();
     if (!content) {
@@ -531,19 +755,42 @@ class AgentService {
     }
 
     const resolvedSessionKey = String(sessionKey || createChatSessionKey(id)).trim() || createChatSessionKey(id);
-    const result = await this.runBinaryCommand(
-      ["agent", "--config", agent.configPath, "--session", resolvedSessionKey, "--message", content],
-      { cwd: agent.dir, timeoutMs: 20 * 60 * 1000 }
-    );
+    const worker = await this.startChatWorker(id, resolvedSessionKey);
+    if (worker.pending) {
+      throw new Error("Chat worker is busy processing another message");
+    }
 
-    const reply = this.extractAgentReply(result.stdout);
+    const reply = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (worker.pending && worker.pending.reject === reject) {
+          worker.pending = null;
+        }
+        reject(new Error("Chat worker timed out while waiting for a reply"));
+      }, 20 * 60 * 1000);
+
+      worker.pending = {
+        timer,
+        resolve,
+        reject
+      };
+      worker.responseBuffer = "";
+
+      try {
+        worker.proc.stdin.write(`${content}\n`);
+      } catch (error) {
+        clearTimeout(timer);
+        worker.pending = null;
+        reject(error);
+      }
+    });
+
     const session = this.getChatSession(id, resolvedSessionKey);
     return {
       agentId: id,
       sessionKey: resolvedSessionKey,
       reply,
-      stdout: result.stdout,
-      stderr: result.stderr,
+      stdout: "",
+      stderr: "",
       session
     };
   }
@@ -666,6 +913,8 @@ class AgentService {
   }
 
   async stopAgent(id) {
+    await this.stopChatWorker(id);
+
     const running = this.running.get(id);
     if (!running) {
       return this.getAgent(id);
@@ -790,7 +1039,19 @@ class AgentService {
     meta.lastStartedAt = nowISO();
     writeJson(metaPath, meta);
 
-    return this.getAgent(id);
+    child.on("close", async () => {
+      try {
+        await this.stopChatWorker(id);
+      } catch {}
+    });
+
+    return this.startChatWorker(id, createChatSessionKey(id))
+      .then(() => this.getAgent(id))
+      .catch(async (error) => {
+        this.appendAgentLog(id, `[CHAT] worker start failed: ${error.message}`);
+        await this.stopAgent(id);
+        throw error;
+      });
   }
 
   async deleteAgent(id) {
