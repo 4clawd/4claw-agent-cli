@@ -1,4 +1,4 @@
-const fs = require("fs");
+﻿const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
@@ -405,7 +405,7 @@ class AgentService {
   loadTemplateConfig() {
     const configPath = this.templateConfigPath();
     if (!configPath) {
-      throw new Error("未找到 default-config.json，请检查 assets/default-config.json");
+      throw new Error("default-config.json was not found. Check assets/default-config.json");
     }
     return JSON.parse(stripUtf8Bom(fs.readFileSync(configPath, "utf8")));
   }
@@ -656,7 +656,7 @@ class AgentService {
   renameAgent(id, name) {
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
     const meta = agent.meta;
     meta.name = String(name || "").trim() || id;
@@ -721,11 +721,11 @@ class AgentService {
 
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
 
     if (!fs.existsSync(agent.configPath)) {
-      throw new Error("config.json 不存在");
+      throw new Error("config.json does not exist");
     }
 
     const normalized = this.normalizeConfigForAgent(agent, readJson(agent.configPath, {}));
@@ -734,7 +734,7 @@ class AgentService {
     const binary = this.resolveBinaryPath();
     if (!binary.found) {
       throw new Error(
-        `未找到 4claw 可执行文件。请放置到: ${path.join(process.cwd(), "resources", "bin", binary.binaryName)}`
+        `4claw executable was not found. Place it in ${path.join(process.cwd(), "resources", "bin", binary.binaryName)}`
       );
     }
 
@@ -920,7 +920,7 @@ class AgentService {
   getLogs(id, maxLines = 3000) {
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
     if (!fs.existsSync(agent.logPath)) {
       return "";
@@ -936,7 +936,7 @@ class AgentService {
   clearLogs(id) {
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
     fs.mkdirSync(path.dirname(agent.logPath), { recursive: true });
     fs.writeFileSync(agent.logPath, "", "utf8");
@@ -946,7 +946,7 @@ class AgentService {
   createBackup(id, destinationPath = "") {
     const agent = this.getAgent(id);
     if (!agent) {
-      throw new Error(`Agent ${id} 不存在`);
+      throw new Error(`Agent ${id} does not exist`);
     }
 
     const fileName = `${id}-${fileTimestamp()}.zip`;
@@ -988,53 +988,96 @@ class AgentService {
     backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return backups;
   }
+  isAgentBackupDir(dir) {
+    if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      return false;
+    }
+    return fs.existsSync(path.join(dir, "config.json"));
+  }
+
+  findBackupAgentDir(rootDir) {
+    if (this.isAgentBackupDir(rootDir)) {
+      return rootDir;
+    }
+
+    const queue = [rootDir];
+    const visited = new Set();
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || visited.has(current) || !fs.existsSync(current)) {
+        continue;
+      }
+      visited.add(current);
+
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        const fullPath = path.join(current, entry.name);
+        if (this.isAgentBackupDir(fullPath)) {
+          return fullPath;
+        }
+        queue.push(fullPath);
+      }
+    }
+
+    return "";
+  }
 
   importBackup(backupPath, preferredName = "") {
     if (!fs.existsSync(backupPath)) {
-      throw new Error("备份文件不存在");
+      throw new Error("Backup file does not exist");
     }
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "4claw-import-"));
-    const zip = new AdmZip(backupPath);
-    zip.extractAllTo(tempRoot, true);
+    try {
+      const zip = new AdmZip(backupPath);
+      zip.extractAllTo(tempRoot, true);
 
-    const topDirs = fs
-      .readdirSync(tempRoot, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => path.join(tempRoot, d.name));
+      const srcDir = this.findBackupAgentDir(tempRoot);
+      if (!srcDir) {
+        throw new Error("Backup archive is invalid: unable to find config.json in extracted content");
+      }
 
-    if (topDirs.length === 0) {
-      throw new Error("备份文件格式错误：找不到 Agent 目录");
+      const sourceId = path.basename(srcDir);
+      const newId = this.normalizeAgentId(preferredName || sourceId || "imported-agent");
+      const destDir = path.join(this.paths.agentsDir, newId);
+      fs.cpSync(srcDir, destDir, { recursive: true, force: true });
+      this.ensureAgentTree(destDir);
+
+      const metaPath = path.join(destDir, "meta.json");
+      const meta = readJson(metaPath, {
+        id: newId,
+        name: preferredName || newId,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+        lastStartedAt: null
+      });
+      meta.id = newId;
+      meta.name = preferredName || meta.name || newId;
+      meta.updatedAt = nowISO();
+      meta.importedAt = nowISO();
+      writeJson(metaPath, meta);
+
+      const importedAgent = this.getAgent(newId);
+      if (!importedAgent) {
+        throw new Error(`Imported agent ${newId} could not be initialized`);
+      }
+
+      const configPath = path.join(destDir, "config.json");
+      const cfg = this.normalizeConfigForAgent(importedAgent, readJson(configPath, this.loadTemplateConfig())).config;
+      writeJson(configPath, cfg);
+      fs.appendFileSync(
+        path.join(destDir, "logs", "runtime.log"),
+        `[${nowISO()}] [SYSTEM] Backup imported from ${backupPath}\n`,
+        "utf8"
+      );
+
+      return this.getAgent(newId);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
     }
-
-    const srcDir = topDirs[0];
-    const sourceId = path.basename(srcDir);
-    const newId = this.normalizeAgentId(preferredName || sourceId || "imported-agent");
-    const destDir = path.join(this.paths.agentsDir, newId);
-    fs.cpSync(srcDir, destDir, { recursive: true });
-    this.ensureAgentTree(destDir);
-
-    const metaPath = path.join(destDir, "meta.json");
-    const meta = readJson(metaPath, {
-      id: newId,
-      name: preferredName || newId,
-      createdAt: nowISO(),
-      updatedAt: nowISO(),
-      lastStartedAt: null
-    });
-    meta.id = newId;
-    meta.name = preferredName || meta.name || newId;
-    meta.updatedAt = nowISO();
-    meta.importedAt = nowISO();
-    writeJson(metaPath, meta);
-
-    const configPath = path.join(destDir, "config.json");
-    const importedAgent = this.getAgent(newId);
-    const cfg = this.normalizeConfigForAgent(importedAgent, readJson(configPath, this.loadTemplateConfig())).config;
-    writeJson(configPath, cfg);
-
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-    return this.getAgent(newId);
   }
 
   restoreFromLocalBackup(fileName, preferredName = "") {

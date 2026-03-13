@@ -1072,12 +1072,36 @@ button {
   box-shadow: var(--shadow-soft);
   color: var(--text-main);
   font-size: 13px;
+  display: grid;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.toast-message {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .toast-error {
   background: rgba(255, 231, 220, 0.96);
   border-color: rgba(184, 74, 50, 0.35);
   color: #7f2a1f;
+}
+
+.toast-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toast-action-btn {
+  border: 1px solid rgba(184, 140, 26, 0.32);
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: rgba(255, 249, 234, 0.92);
+  color: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-inset);
 }
 
 @media (max-width: 1220px) {

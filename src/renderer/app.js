@@ -298,6 +298,7 @@ const I18N = {
     toast_select_agent: "Please select an agent first.",
     toast_settings_saved: "Settings saved.",
     toast_backup_created: "Backup created.",
+    toast_backup_imported: "Backup imported as {name}.",
     toast_quick_saved: "Quick config saved.",
     toast_full_saved: "Full config saved.",
     toast_config_resynced: "Agent changed while loading config. Config was reloaded for the current selection.",
@@ -306,6 +307,9 @@ const I18N = {
     toast_backup_restored: "Backup restored.",
     toast_config_exported: "Config exported: {path}",
     toast_backup_exported: "Backup exported: {path}",
+    toast_error_copy: "Copy",
+    toast_error_close: "Close",
+    toast_error_copied: "Error message copied.",
     backup_time: "Time",
     backup_size: "Size",
     backup_restore_new: "Restore As New Agent",
@@ -466,6 +470,7 @@ const I18N = {
     toast_select_agent: "请先选择一个 Agent。",
     toast_settings_saved: "设置已保存。",
     toast_backup_created: "备份已创建。",
+    toast_backup_imported: "备份已导入为 {name}。",
     toast_quick_saved: "快速配置已保存。",
     toast_full_saved: "完整配置已保存。",
     toast_config_resynced: "配置加载期间已切换 Agent，已按当前选择重新加载配置。",
@@ -474,6 +479,9 @@ const I18N = {
     toast_backup_restored: "备份恢复成功。",
     toast_config_exported: "配置已导出：{path}",
     toast_backup_exported: "备份已导出：{path}",
+    toast_error_copy: "复制",
+    toast_error_close: "关闭",
+    toast_error_copied: "错误信息已复制。",
     backup_time: "时间",
     backup_size: "大小",
     backup_restore_new: "恢复为新 Agent",
@@ -639,9 +647,13 @@ const I18N = {
     toast_config_resynced: "Во время загрузки конфигурации выбран другой агент. Конфиг перезагружен для текущего выбора.",
     toast_config_imported: "Конфиг импортирован.",
     toast_agent_created_started: "Агент создан и запущен.",
+    toast_backup_imported: "Бэкап импортирован как {name}.",
     toast_backup_restored: "Бэкап восстановлен.",
     toast_config_exported: "Конфиг экспортирован: {path}",
     toast_backup_exported: "Бэкап экспортирован: {path}",
+    toast_error_copy: "Копировать",
+    toast_error_close: "Закрыть",
+    toast_error_copied: "Текст ошибки скопирован.",
     backup_time: "Время",
     backup_size: "Размер",
     backup_restore_new: "Восстановить как нового агента",
@@ -1508,13 +1520,50 @@ function showToast(message, type = "info") {
   if (!els.toastHost) {
     return;
   }
+  const text = String(message || "");
   const toast = document.createElement("div");
   toast.className = `toast ${type === "error" ? "toast-error" : ""}`;
-  toast.textContent = String(message || "");
+  const body = document.createElement("div");
+  body.className = "toast-message";
+  body.textContent = text;
+  toast.appendChild(body);
+
+  const dismiss = () => {
+    toast.remove();
+  };
+
+  if (type === "error") {
+    const actions = document.createElement("div");
+    actions.className = "toast-actions";
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "toast-action-btn";
+    copyBtn.textContent = t("toast_error_copy");
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await copyTextToClipboard(text);
+        showInfo(t("toast_error_copied"));
+      } catch (error) {
+        console.error("Failed to copy error text", error);
+      }
+    });
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "toast-action-btn";
+    closeBtn.textContent = t("toast_error_close");
+    closeBtn.addEventListener("click", dismiss);
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(closeBtn);
+    toast.appendChild(actions);
+  }
+
   els.toastHost.appendChild(toast);
   window.setTimeout(() => {
-    toast.remove();
-  }, 2600);
+    dismiss();
+  }, type === "error" ? 10000 : 2600);
 }
 
 function showError(error) {
@@ -3271,13 +3320,17 @@ function bindEvents() {
   els.createAgentBtn.addEventListener("click", () => openCreateWizard());
 
   els.importBackupBtn.addEventListener("click", async () => {
-    const preferred = window.prompt(t("prompt_optional_imported_name"), "");
     try {
-      const imported = await api.importBackup(preferred || "");
+      const imported = await api.importBackup("");
       if (imported && imported.id) {
         state.selectedAgentId = imported.id;
         await refreshAgents(true);
         await selectAgent(imported.id);
+        showInfo(
+          t("toast_backup_imported", {
+            name: imported.meta?.name || imported.id
+          })
+        );
       }
     } catch (error) {
       showError(error);
