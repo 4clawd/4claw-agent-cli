@@ -1,7 +1,14 @@
-﻿const fs = require("fs");
+const fs = require("fs");
+const http = require("http");
+const https = require("https");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const WATCHDOG_INTERVAL_MS = 5000;
+const WATCHDOG_HTTP_TIMEOUT_MS = 3000;
+const WATCHDOG_FAILURE_THRESHOLD = 3;
+const WATCHDOG_LLM_STALL_MS = 3 * 60 * 1000;
+
 const AdmZip = require("adm-zip");
 
 function nowISO() {
@@ -63,9 +70,15 @@ class AgentService {
   constructor(app) {
     this.app = app;
     this.running = new Map();
+    this.desiredRunning = new Set();
+    this.stoppingAgents = new Set();
     this.chatWorkers = new Map();
     this.authSessions = new Map();
+    this.watchdogState = new Map();
+    this.watchdogBusy = false;
+    this.watchdogTimer = null;
     this.paths = this.initPaths();
+    this.startWatchdog();
   }
 
   initPaths() {
@@ -76,6 +89,223 @@ class AgentService {
     fs.mkdirSync(agentsDir, { recursive: true });
     fs.mkdirSync(backupsDir, { recursive: true });
     return { root, userData, agentsDir, backupsDir };
+  }
+
+  startWatchdog() {
+    if (this.watchdogTimer) {
+      return;
+    }
+    this.watchdogTimer = setInterval(() => {
+      this.runWatchdogCycle().catch(() => {});
+    }, WATCHDOG_INTERVAL_MS);
+    this.watchdogTimer.unref?.();
+  }
+
+  stopWatchdog() {
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+
+  async dispose() {
+    this.stopWatchdog();
+  }
+
+  getWatchdogEntry(id) {
+    const existing = this.watchdogState.get(id);
+    if (existing) {
+      return existing;
+    }
+    const created = {
+      failures: 0,
+      lastReason: "",
+      lastRestartAt: "",
+      restarting: false
+    };
+    this.watchdogState.set(id, created);
+    return created;
+  }
+
+  healthEndpointForAgent(agent) {
+    const cfg = readJson(agent.configPath, {});
+    const port = Number(cfg?.gateway?.port);
+    const host = String(cfg?.gateway?.host || "127.0.0.1").trim() || "127.0.0.1";
+    const localHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+    return Number.isInteger(port) && port > 0 ? `http://${localHost}:${port}/ready` : "";
+  }
+
+  async fetchJson(targetUrl, timeoutMs = WATCHDOG_HTTP_TIMEOUT_MS) {
+    const parsed = new URL(targetUrl);
+    const client = parsed.protocol === "https:" ? https : http;
+    return await new Promise((resolve, reject) => {
+      const req = client.request(
+        parsed,
+        { method: "GET", timeout: timeoutMs },
+        (res) => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => {
+            body += chunk;
+          });
+          res.on("end", () => {
+            try {
+              resolve({
+                ok: res.statusCode >= 200 && res.statusCode < 300,
+                statusCode: res.statusCode,
+                data: body ? JSON.parse(body) : {}
+              });
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }
+      );
+      req.on("timeout", () => {
+        req.destroy(new Error(`watchdog request timed out after ${timeoutMs}ms`));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
+  parseWatchdogTimestamp(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return 0;
+    }
+    const time = Date.parse(text);
+    return Number.isNaN(time) ? 0 : time;
+  }
+
+  getActivityTimestamp(activity, key) {
+    return this.parseWatchdogTimestamp(activity?.[key]?.timestamp);
+  }
+
+  detectHealthStall(payload) {
+    if (!payload || typeof payload !== "object") {
+      return "";
+    }
+    if (String(payload.status || "").trim().toLowerCase() !== "ready") {
+      return `ready endpoint returned status=${payload.status || "unknown"}`;
+    }
+
+    const activity = payload.activity && typeof payload.activity === "object" ? payload.activity : {};
+    const requestAt = this.getActivityTimestamp(activity, "llm_request");
+    if (!requestAt) {
+      return "";
+    }
+
+    const responseAt = Math.max(
+      this.getActivityTimestamp(activity, "llm_response"),
+      this.getActivityTimestamp(activity, "llm_error")
+    );
+    if (responseAt >= requestAt) {
+      return "";
+    }
+
+    const ageMs = Date.now() - requestAt;
+    if (ageMs > WATCHDOG_LLM_STALL_MS) {
+      return `llm_request has been in flight for ${Math.round(ageMs / 1000)}s`;
+    }
+
+    const toolStartAt = this.getActivityTimestamp(activity, "tool_start");
+    const toolDoneAt = Math.max(
+      this.getActivityTimestamp(activity, "tool_complete"),
+      this.getActivityTimestamp(activity, "tool_async_complete")
+    );
+    if (toolStartAt && toolDoneAt < toolStartAt) {
+      const toolAgeMs = Date.now() - toolStartAt;
+      if (toolAgeMs > WATCHDOG_LLM_STALL_MS) {
+        return `tool execution has been in flight for ${Math.round(toolAgeMs / 1000)}s`;
+      }
+    }
+
+    return "";
+  }
+
+  async restartAgentFromWatchdog(id, reason) {
+    const entry = this.getWatchdogEntry(id);
+    if (entry.restarting) {
+      return;
+    }
+    entry.restarting = true;
+    entry.lastReason = reason;
+    this.appendAgentLog(id, `[WATCHDOG] restarting agent: ${reason}`);
+    try {
+      await this.stopAgent(id, { preserveDesired: true });
+      await this.startAgent(id);
+      entry.failures = 0;
+      entry.lastRestartAt = nowISO();
+      this.appendAgentLog(id, "[WATCHDOG] agent restarted successfully");
+    } catch (error) {
+      this.appendAgentLog(id, `[WATCHDOG] restart failed: ${error.message}`);
+    } finally {
+      entry.restarting = false;
+    }
+  }
+
+  async checkAgentWatchdog(id) {
+    if (!this.desiredRunning.has(id) || this.stoppingAgents.has(id)) {
+      return;
+    }
+
+    const entry = this.getWatchdogEntry(id);
+    const agent = this.getAgent(id);
+    if (!agent) {
+      return;
+    }
+
+    if (!agent.status?.running) {
+      entry.failures += 1;
+      entry.lastReason = "process exited";
+      if (entry.failures >= 1) {
+        await this.restartAgentFromWatchdog(id, entry.lastReason);
+      }
+      return;
+    }
+
+    try {
+      const targetUrl = this.healthEndpointForAgent(agent);
+      if (!targetUrl) {
+        throw new Error("agent health endpoint is not configured");
+      }
+      const result = await this.fetchJson(targetUrl);
+      const stallReason = result.ok ? this.detectHealthStall(result.data) : `health status ${result.statusCode}`;
+      if (!result.ok || stallReason) {
+        entry.failures += 1;
+        entry.lastReason = stallReason || `health status ${result.statusCode}`;
+        this.appendAgentLog(id, `[WATCHDOG] health check failed (${entry.failures}/${WATCHDOG_FAILURE_THRESHOLD}): ${entry.lastReason}`);
+        if (entry.failures >= WATCHDOG_FAILURE_THRESHOLD) {
+          await this.restartAgentFromWatchdog(id, entry.lastReason);
+        }
+        return;
+      }
+
+      entry.failures = 0;
+      entry.lastReason = "";
+    } catch (error) {
+      entry.failures += 1;
+      entry.lastReason = error.message || String(error);
+      this.appendAgentLog(id, `[WATCHDOG] health check error (${entry.failures}/${WATCHDOG_FAILURE_THRESHOLD}): ${entry.lastReason}`);
+      if (entry.failures >= WATCHDOG_FAILURE_THRESHOLD) {
+        await this.restartAgentFromWatchdog(id, entry.lastReason);
+      }
+    }
+  }
+
+  async runWatchdogCycle() {
+    if (this.watchdogBusy) {
+      return;
+    }
+    this.watchdogBusy = true;
+    try {
+      for (const id of Array.from(this.desiredRunning)) {
+        await this.checkAgentWatchdog(id);
+      }
+    } finally {
+      this.watchdogBusy = false;
+    }
   }
 
   binarySearchPaths() {
@@ -580,7 +810,8 @@ class AgentService {
       status: {
         running: isRunning,
         pid: isRunning ? processInfo.proc.pid : null,
-        startedAt: isRunning ? processInfo.startedAt : null
+        startedAt: isRunning ? processInfo.startedAt : null,
+        watchdog: this.watchdogState.get(id) || null
       }
     };
   }
@@ -1083,59 +1314,71 @@ class AgentService {
     return this.getAgent(id);
   }
 
-  async stopAgent(id) {
-    await this.stopChatWorker(id);
-
-    const running = this.running.get(id);
-    if (!running) {
-      return this.getAgent(id);
+  async stopAgent(id, options = {}) {
+    const preserveDesired = Boolean(options && options.preserveDesired);
+    this.stoppingAgents.add(id);
+    if (!preserveDesired) {
+      this.desiredRunning.delete(id);
+      this.watchdogState.delete(id);
     }
 
-    const child = running.proc;
-    await new Promise((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (!done) {
-          done = true;
-          resolve();
-        }
-      };
+    try {
+      await this.stopChatWorker(id);
 
-      child.once("exit", finish);
-      try {
-        if (process.platform === "win32") {
-          const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true });
-          killer.once("exit", () => setTimeout(finish, 120));
-          killer.once("error", () => {
-            try {
-              child.kill("SIGTERM");
-            } catch {}
-            setTimeout(finish, 500);
-          });
-        } else {
-          child.kill("SIGTERM");
-          setTimeout(() => {
-            if (!child.killed) {
-              try {
-                child.kill("SIGKILL");
-              } catch {}
-            }
-          }, 1500);
-          setTimeout(finish, 2200);
-        }
-      } catch {
-        finish();
+      const running = this.running.get(id);
+      if (!running) {
+        return this.getAgent(id);
       }
 
-      setTimeout(finish, 3000);
-    });
+      const child = running.proc;
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (!done) {
+            done = true;
+            resolve();
+          }
+        };
 
-    return this.getAgent(id);
+        child.once("exit", finish);
+        try {
+          if (process.platform === "win32") {
+            const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true });
+            killer.once("exit", () => setTimeout(finish, 120));
+            killer.once("error", () => {
+              try {
+                child.kill("SIGTERM");
+              } catch {}
+              setTimeout(finish, 500);
+            });
+          } else {
+            child.kill("SIGTERM");
+            setTimeout(() => {
+              if (!child.killed) {
+                try {
+                  child.kill("SIGKILL");
+                } catch {}
+              }
+            }, 1500);
+            setTimeout(finish, 2200);
+          }
+        } catch {
+          finish();
+        }
+
+        setTimeout(finish, 3000);
+      });
+
+      return this.getAgent(id);
+    } finally {
+      this.stoppingAgents.delete(id);
+    }
   }
 
   startAgent(id) {
     const existing = this.running.get(id);
     if (existing) {
+      this.desiredRunning.add(id);
       return this.getAgent(id);
     }
 
@@ -1203,6 +1446,7 @@ class AgentService {
       proc: child,
       startedAt: nowISO()
     });
+    this.desiredRunning.add(id);
 
     const metaPath = path.join(agent.dir, "meta.json");
     const meta = readJson(metaPath, agent.meta);

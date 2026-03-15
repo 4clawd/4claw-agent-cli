@@ -881,6 +881,8 @@ app.on("before-quit", async () => {
     return;
   }
 
+  await agentService.dispose();
+
   const active = agentService.listAgents().filter((a) => a.status.running);
   for (const item of active) {
     try {
