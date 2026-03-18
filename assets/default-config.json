@@ -14,7 +14,8 @@
       "model_name": "test",
       "model": "test",
       "api_key": "sk-your-openai-key",
-      "api_base": "https://api.openai.com/v1"
+      "api_base": "https://api.openai.com/v1",
+      "request_timeout_seconds": 120
     }
   ],
   "channels": {
