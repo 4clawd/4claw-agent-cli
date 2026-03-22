@@ -28,6 +28,10 @@ const state = {
   authStatus: {
     providers: {}
   },
+  wechatLoginByScope: {
+    quick: null,
+    wizard: null
+  },
   quickChannelValues: {},
   wizardChannelValues: {}
 };
@@ -73,6 +77,7 @@ const els = {
   quickModelPreset: document.getElementById("quickModelPreset"),
   quickModelName: document.getElementById("quickModelName"),
   quickApiBase: document.getElementById("quickApiBase"),
+  quickSupportsToolCalling: document.getElementById("quickSupportsToolCalling"),
   quickAuthMethod: document.getElementById("quickAuthMethod"),
   quickApiKey: document.getElementById("quickApiKey"),
   quickOAuthPanel: document.getElementById("quickOAuthPanel"),
@@ -102,6 +107,7 @@ const els = {
   wizardModelPreset: document.getElementById("wizardModelPreset"),
   wizardModelName: document.getElementById("wizardModelName"),
   wizardApiBase: document.getElementById("wizardApiBase"),
+  wizardSupportsToolCalling: document.getElementById("wizardSupportsToolCalling"),
   wizardAuthMethod: document.getElementById("wizardAuthMethod"),
   wizardApiKey: document.getElementById("wizardApiKey"),
   wizardOAuthPanel: document.getElementById("wizardOAuthPanel"),
@@ -124,6 +130,9 @@ const els = {
   oauthDeviceCodeCard: document.getElementById("oauthDeviceCodeCard"),
   oauthDeviceCodeLabel: document.getElementById("oauthDeviceCodeLabel"),
   oauthDeviceCode: document.getElementById("oauthDeviceCode"),
+  oauthDeviceQrCard: document.getElementById("oauthDeviceQrCard"),
+  oauthDeviceQrLabel: document.getElementById("oauthDeviceQrLabel"),
+  oauthDeviceQrImage: document.getElementById("oauthDeviceQrImage"),
   oauthDeviceCopyBtn: document.getElementById("oauthDeviceCopyBtn"),
   oauthDeviceHint: document.getElementById("oauthDeviceHint"),
   oauthDeviceCloseBtn: document.getElementById("oauthDeviceCloseBtn")
@@ -139,7 +148,10 @@ let logsRefreshInFlight = false;
 let logsAutoRefreshTimer = null;
 let authSessionPollTimer = null;
 let activeAuthSessionId = "";
+let activeAuthSessionKind = "";
+let activeAuthSessionScope = "";
 let currentAuthSession = null;
+let currentQRCodeText = "";
 let configLoadSeq = 0;
 let chatLoadSeq = 0;
 let chatSendSeq = 0;
@@ -149,9 +161,10 @@ const AUTH_MODE_API_KEY = "api_key";
 const AUTH_MODE_OAUTH = "oauth";
 const CUSTOMER_PLATFORM = "__customer_platform__";
 const CUSTOMER_MODEL = "__customer_model__";
-const CHANNEL_ORDER = ["telegram", "discord", "qq", "whatsapp", "feishu", "dingtalk", "slack", "line"];
+const CHANNEL_ORDER = ["telegram", "wechat", "discord", "qq", "whatsapp", "feishu", "dingtalk", "slack", "line"];
 const CHANNEL_LABELS = {
   telegram: "Telegram",
+  wechat: "WeChat",
   discord: "Discord",
   qq: "QQ",
   whatsapp: "WhatsApp",
@@ -191,6 +204,7 @@ const I18N = {
     model_customer: "customer",
     model_name: "Model Name",
     api_base: "API Base",
+    supports_tool_calling: "Supports Tool Calling",
     auth_method: "Auth Method",
     auth_method_api_key: "API Key",
     auth_method_oauth: "OAuth",
@@ -216,6 +230,17 @@ const I18N = {
     oauth_device_open: "Open Page",
     oauth_device_copy: "Copy Code",
     oauth_browser_copy: "Copy Link",
+    wechat_login: "WeChat Login",
+    wechat_login_status: "WeChat Status",
+    wechat_login_ready: "Ready to login",
+    wechat_login_pending: "Waiting for scan",
+    wechat_login_success: "WeChat login completed.",
+    wechat_login_qr_title: "WeChat QR Login",
+    wechat_login_qr_intro: "Scan this QR code with WeChat to authorize the channel account.",
+    wechat_login_qr_hint: "Keep this dialog open until the WeChat login finishes.",
+    wechat_login_qr_label: "Scan QR Code",
+    wechat_login_qr_failed: "Failed to generate WeChat QR code.",
+    wechat_login_scope_saved: "WeChat account bound to current channel form.",
     oauth_device_close: "Close",
     oauth_device_intro: "Open the verification page and enter the one-time code below.",
     oauth_browser_intro: "Open the login link below in your browser and complete the OAuth flow there.",
@@ -373,6 +398,7 @@ const I18N = {
     model_customer: "customer（自定义）",
     model_name: "模型名称",
     api_base: "API 地址",
+    supports_tool_calling: "支持 Tool Calling",
     auth_method: "鉴权方式",
     auth_method_api_key: "API Key",
     auth_method_oauth: "OAuth",
@@ -398,6 +424,17 @@ const I18N = {
     oauth_device_open: "打开页面",
     oauth_device_copy: "复制验证码",
     oauth_browser_copy: "复制链接",
+    wechat_login: "微信登录",
+    wechat_login_status: "微信状态",
+    wechat_login_ready: "准备登录",
+    wechat_login_pending: "等待扫码",
+    wechat_login_success: "微信登录已完成。",
+    wechat_login_qr_title: "微信二维码登录",
+    wechat_login_qr_intro: "请使用微信扫描下方二维码，授权当前渠道账号。",
+    wechat_login_qr_hint: "请保持此弹窗开启，直到微信登录完成。",
+    wechat_login_qr_label: "扫码二维码",
+    wechat_login_qr_failed: "生成微信二维码失败。",
+    wechat_login_scope_saved: "微信账号信息已写入当前渠道表单。",
     oauth_device_close: "关闭",
     oauth_device_intro: "打开验证页面，并输入下方一次性验证码。",
     oauth_browser_intro: "请在浏览器中打开下方链接，并在那里完成 OAuth 登录。",
@@ -555,6 +592,7 @@ const I18N = {
     model_customer: "customer",
     model_name: "Имя модели",
     api_base: "API Base",
+    supports_tool_calling: "Поддержка Tool Calling",
     auth_method: "Метод авторизации",
     auth_method_api_key: "API Key",
     auth_method_oauth: "OAuth",
@@ -580,6 +618,17 @@ const I18N = {
     oauth_device_open: "Открыть страницу",
     oauth_device_copy: "Копировать код",
     oauth_browser_copy: "Копировать ссылку",
+    wechat_login: "Вход WeChat",
+    wechat_login_status: "Статус WeChat",
+    wechat_login_ready: "Готово к входу",
+    wechat_login_pending: "Ожидание сканирования",
+    wechat_login_success: "Вход в WeChat завершен.",
+    wechat_login_qr_title: "Вход по QR WeChat",
+    wechat_login_qr_intro: "Отсканируйте этот QR-код в WeChat, чтобы авторизовать канал.",
+    wechat_login_qr_hint: "Не закрывайте это окно, пока вход в WeChat не завершится.",
+    wechat_login_qr_label: "QR-код для сканирования",
+    wechat_login_qr_failed: "Не удалось сгенерировать QR-код WeChat.",
+    wechat_login_scope_saved: "Данные учетной записи WeChat записаны в текущую форму канала.",
     oauth_device_close: "Закрыть",
     oauth_device_intro: "Откройте страницу подтверждения и введите одноразовый код ниже.",
     oauth_browser_intro: "Откройте ссылку ниже в браузере и завершите OAuth-авторизацию там.",
@@ -780,6 +829,7 @@ function getModelFormElements(scope) {
       preset: els.wizardModelPreset,
       modelName: els.wizardModelName,
       apiBase: els.wizardApiBase,
+      supportsToolCalling: els.wizardSupportsToolCalling,
       authMethod: els.wizardAuthMethod,
       apiKey: els.wizardApiKey,
       oauthPanel: els.wizardOAuthPanel,
@@ -792,6 +842,7 @@ function getModelFormElements(scope) {
     preset: els.quickModelPreset,
     modelName: els.quickModelName,
     apiBase: els.quickApiBase,
+    supportsToolCalling: els.quickSupportsToolCalling,
     authMethod: els.quickAuthMethod,
     apiKey: els.quickApiKey,
     oauthPanel: els.quickOAuthPanel,
@@ -1184,6 +1235,33 @@ function getChannelLabel(channelKey) {
   return CHANNEL_LABELS[channelKey] || channelKey;
 }
 
+function getWeChatLoginState(scope) {
+  return state.wechatLoginByScope[scope] || null;
+}
+
+function setWeChatLoginState(scope, payload) {
+  state.wechatLoginByScope[scope] = payload || null;
+}
+
+function getWeChatStatusText(scope) {
+  const current = getWeChatLoginState(scope);
+  const store = getChannelStore(scope);
+  const configuredAccountId = String(store?.wechat?.account_id || "").trim();
+  if (!current) {
+    return configuredAccountId ? `${t("oauth_authenticated")}: ${configuredAccountId}` : t("wechat_login_ready");
+  }
+  if (current.status === "success") {
+    return current.accountId ? `${t("oauth_authenticated")}: ${current.accountId}` : t("wechat_login_success");
+  }
+  if (current.status === "pending" || current.status === "starting") {
+    return t("wechat_login_pending");
+  }
+  if (current.error) {
+    return current.error;
+  }
+  return t("wechat_login_ready");
+}
+
 function ensureChannelStoreFromConfig(scope, channelsConfig = {}) {
   const store = {};
   for (const key of CHANNEL_ORDER) {
@@ -1207,6 +1285,7 @@ function ensureChannelStoreFromConfig(scope, channelsConfig = {}) {
   } else {
     state.quickChannelValues = store;
   }
+  setWeChatLoginState(scope, null);
 }
 
 function detectEnabledChannel(channelsConfig) {
@@ -1241,6 +1320,36 @@ function renderChannelFields(scope, channelKey) {
   }
 
   fields.innerHTML = "";
+  if (channelKey === "wechat") {
+    const loginPanel = document.createElement("div");
+    loginPanel.className = "channel-login-panel";
+
+    const loginHead = document.createElement("div");
+    loginHead.className = "auth-panel-head";
+
+    const loginLabel = document.createElement("span");
+    loginLabel.textContent = t("wechat_login_status");
+
+    const loginStatus = document.createElement("span");
+    loginStatus.className = "status-badge";
+    loginStatus.textContent = getWeChatStatusText(scope);
+
+    loginHead.appendChild(loginLabel);
+    loginHead.appendChild(loginStatus);
+
+    const loginBtn = document.createElement("button");
+    loginBtn.type = "button";
+    loginBtn.className = "btn btn-soft";
+    loginBtn.textContent = t("wechat_login");
+    loginBtn.addEventListener("click", () => {
+      triggerWeChatLogin(scope);
+    });
+
+    loginPanel.appendChild(loginHead);
+    loginPanel.appendChild(loginBtn);
+    fields.appendChild(loginPanel);
+  }
+
   const entries = getChannelFieldEntries(channelKey);
   if (!entries.length) {
     const empty = document.createElement("div");
@@ -1449,6 +1558,7 @@ function applyLocale() {
   setText("quickModelPresetLabel", t("platform_model"));
   setText("quickModelNameLabel", t("model_name"));
   setText("quickApiBaseLabel", t("api_base"));
+  setText("quickSupportsToolCallingLabel", t("supports_tool_calling"));
   setText("quickAuthMethodLabel", t("auth_method"));
   setText("quickApiKeyLabel", t("api_key"));
   setText("quickOAuthStatusLabel", t("oauth_status"));
@@ -1480,6 +1590,7 @@ function applyLocale() {
   setText("wizardModelPresetLabel", t("platform_model"));
   setText("wizardModelNameLabel", t("model_name"));
   setText("wizardApiBaseLabel", t("api_base"));
+  setText("wizardSupportsToolCallingLabel", t("supports_tool_calling"));
   setText("wizardAuthMethodLabel", t("auth_method"));
   setText("wizardApiKeyLabel", t("api_key"));
   setText("wizardOAuthStatusLabel", t("oauth_status"));
@@ -1495,6 +1606,7 @@ function applyLocale() {
   setText("oauthDeviceUrlLabel", t("oauth_device_url"));
   setText("oauthDeviceOpenBtn", t("oauth_device_open"));
   setText("oauthDeviceCodeLabel", t("oauth_device_code"));
+  setText("oauthDeviceQrLabel", t("wechat_login_qr_label"));
   setText("oauthDeviceCopyBtn", t("oauth_device_copy"));
   setText("oauthDeviceHint", t("oauth_device_hint"));
   setText("oauthDeviceCloseBtn", t("oauth_device_close"));
@@ -1545,10 +1657,11 @@ function applyLocale() {
   }
   if (els.oauthDeviceModal && !els.oauthDeviceModal.classList.contains("hidden")) {
     renderOAuthDeviceModal({
-      status: activeAuthSessionId ? "pending" : "starting",
-      deviceUrl: els.oauthDeviceUrl?.textContent || "",
-      userCode: els.oauthDeviceCode?.textContent || "",
-      error: ""
+      ...(currentAuthSession || {}),
+      status: currentAuthSession?.status || (activeAuthSessionId ? "pending" : "starting"),
+      deviceUrl: currentAuthSession?.deviceUrl || els.oauthDeviceUrl?.textContent || "",
+      userCode: currentAuthSession?.userCode || els.oauthDeviceCode?.textContent || "",
+      error: currentAuthSession?.error || ""
     });
   }
 }
@@ -1707,10 +1820,14 @@ function clearAuthSessionPolling() {
     authSessionPollTimer = null;
   }
   activeAuthSessionId = "";
+  activeAuthSessionKind = "";
+  activeAuthSessionScope = "";
 }
 
 function getDeviceSessionStateText(status) {
   switch (status) {
+    case "error":
+      return "Error";
     case "success":
       return t("oauth_device_success");
     case "pending":
@@ -1720,20 +1837,57 @@ function getDeviceSessionStateText(status) {
   }
 }
 
+async function updateLoginQRCode(session) {
+  const mode = String(session?.mode || "").trim();
+  const nextText = mode === "qr_link" ? String(session?.deviceUrl || "").trim() : "";
+  currentQRCodeText = nextText;
+  if (els.oauthDeviceQrCard) {
+    els.oauthDeviceQrCard.classList.toggle("hidden", !nextText);
+  }
+  if (!els.oauthDeviceQrImage) {
+    return;
+  }
+  if (!nextText) {
+    els.oauthDeviceQrImage.removeAttribute("src");
+    els.oauthDeviceQrImage.alt = "";
+    return;
+  }
+  try {
+    const dataUrl = await api.generateQRCode(nextText);
+    if (currentQRCodeText !== nextText) {
+      return;
+    }
+    els.oauthDeviceQrImage.src = dataUrl;
+    els.oauthDeviceQrImage.alt = t("wechat_login_qr_label");
+  } catch (error) {
+    if (currentQRCodeText !== nextText) {
+      return;
+    }
+    els.oauthDeviceQrImage.removeAttribute("src");
+    els.oauthDeviceQrImage.alt = "";
+    showError(error?.message || t("wechat_login_qr_failed"));
+  }
+}
+
 function renderOAuthDeviceModal(session) {
   if (!els.oauthDeviceModal) {
     return;
   }
   currentAuthSession = session || null;
   const isBrowserLink = session?.mode === "browser_link";
+  const isWeChatQR = session?.mode === "qr_link";
   if (els.oauthDeviceTitle) {
-    els.oauthDeviceTitle.textContent = t(isBrowserLink ? "oauth_browser_title" : "oauth_device_title");
+    els.oauthDeviceTitle.textContent = t(
+      isWeChatQR ? "wechat_login_qr_title" : isBrowserLink ? "oauth_browser_title" : "oauth_device_title"
+    );
   }
   if (els.oauthDeviceIntro) {
-    els.oauthDeviceIntro.textContent = t(isBrowserLink ? "oauth_browser_intro" : "oauth_device_intro");
+    els.oauthDeviceIntro.textContent = t(
+      isWeChatQR ? "wechat_login_qr_intro" : isBrowserLink ? "oauth_browser_intro" : "oauth_device_intro"
+    );
   }
   els.oauthDeviceUrlCard?.classList.remove("hidden");
-  els.oauthDeviceCodeCard?.classList.toggle("hidden", isBrowserLink);
+  els.oauthDeviceCodeCard?.classList.toggle("hidden", isBrowserLink || isWeChatQR);
   if (els.oauthDeviceUrlLabel) {
     els.oauthDeviceUrlLabel.textContent = t("oauth_device_url");
   }
@@ -1745,21 +1899,24 @@ function renderOAuthDeviceModal(session) {
     els.oauthDeviceOpenBtn.disabled = !session?.deviceUrl;
   }
   if (els.oauthDeviceCopyBtn) {
-    els.oauthDeviceCopyBtn.textContent = t(isBrowserLink ? "oauth_browser_copy" : "oauth_device_copy");
-    els.oauthDeviceCopyBtn.disabled = isBrowserLink ? !session?.deviceUrl : !session?.userCode;
+    els.oauthDeviceCopyBtn.textContent = t(isBrowserLink || isWeChatQR ? "oauth_browser_copy" : "oauth_device_copy");
+    els.oauthDeviceCopyBtn.disabled = isBrowserLink || isWeChatQR ? !session?.deviceUrl : !session?.userCode;
   }
   if (els.oauthDeviceCloseBtn) {
     els.oauthDeviceCloseBtn.textContent = t("oauth_device_close");
   }
   if (els.oauthDeviceHint) {
     if (session?.status === "success") {
-      els.oauthDeviceHint.textContent = t("oauth_login_success");
+      els.oauthDeviceHint.textContent = t(isWeChatQR ? "wechat_login_success" : "oauth_login_success");
     } else {
-      els.oauthDeviceHint.textContent = t(isBrowserLink ? "oauth_browser_hint" : "oauth_device_hint");
+      els.oauthDeviceHint.textContent = t(
+        isWeChatQR ? "wechat_login_qr_hint" : isBrowserLink ? "oauth_browser_hint" : "oauth_device_hint"
+      );
     }
   }
   if (els.oauthDeviceState) {
-    els.oauthDeviceState.textContent = session?.error || getDeviceSessionStateText(session?.status || "");
+    els.oauthDeviceState.textContent =
+      session?.error || (isWeChatQR ? getWeChatStatusText(activeAuthSessionScope || "quick") : getDeviceSessionStateText(session?.status || ""));
   }
   if (els.oauthDeviceUrl) {
     els.oauthDeviceUrl.textContent = session?.deviceUrl || "";
@@ -1767,6 +1924,7 @@ function renderOAuthDeviceModal(session) {
   if (els.oauthDeviceCode) {
     els.oauthDeviceCode.textContent = session?.userCode || "";
   }
+  updateLoginQRCode(session).catch(() => {});
 }
 
 function openOAuthDeviceModal(session) {
@@ -1776,6 +1934,10 @@ function openOAuthDeviceModal(session) {
 
 function closeOAuthDeviceModal() {
   currentAuthSession = null;
+  currentQRCodeText = "";
+  if (els.oauthDeviceQrImage) {
+    els.oauthDeviceQrImage.removeAttribute("src");
+  }
   els.oauthDeviceModal?.classList.add("hidden");
 }
 
@@ -1799,35 +1961,67 @@ async function copyTextToClipboard(value) {
   input.remove();
 }
 
-function startAuthSessionPolling(sessionId) {
+function applyWeChatLoginSession(scope, session) {
+  if (!scope) {
+    return;
+  }
+  setWeChatLoginState(scope, session);
+  const store = getChannelStore(scope);
+  if (!store.wechat) {
+    store.wechat = {};
+  }
+  if (session?.accountId) {
+    store.wechat.account_id = session.accountId;
+  }
+  if (session?.baseUrl) {
+    store.wechat.base_url = session.baseUrl;
+  }
+  const currentPlatform = getChannelElements(scope).platform?.value || "telegram";
+  renderChannelFields(scope, currentPlatform);
+}
+
+function startAuthSessionPolling(sessionId, kind = "auth", scope = "") {
   clearAuthSessionPolling();
   activeAuthSessionId = String(sessionId || "").trim();
+  activeAuthSessionKind = String(kind || "auth").trim() || "auth";
+  activeAuthSessionScope = String(scope || "").trim();
   if (!activeAuthSessionId) {
     return;
   }
 
   authSessionPollTimer = window.setInterval(async () => {
     try {
-      const session = await api.getAuthSession(activeAuthSessionId);
+      const session =
+        activeAuthSessionKind === "wechat"
+          ? await api.getWeChatLoginSession(activeAuthSessionId)
+          : await api.getAuthSession(activeAuthSessionId);
       if (!session) {
         clearAuthSessionPolling();
         return;
       }
 
+      if (activeAuthSessionKind === "wechat") {
+        applyWeChatLoginSession(activeAuthSessionScope, session);
+      }
       renderOAuthDeviceModal(session);
 
       if (session.status === "success") {
         clearAuthSessionPolling();
-        await refreshAuthStatus();
+        if (activeAuthSessionKind === "auth") {
+          await refreshAuthStatus();
+        }
+        if (activeAuthSessionKind === "wechat") {
+          applyWeChatLoginSession(activeAuthSessionScope, session);
+        }
         renderOAuthDeviceModal(session);
-        showInfo(t("oauth_login_success"));
+        showInfo(t(activeAuthSessionKind === "wechat" ? "wechat_login_scope_saved" : "oauth_login_success"));
         window.setTimeout(() => closeOAuthDeviceModal(), 1200);
         return;
       }
 
       if (session.status === "error") {
         clearAuthSessionPolling();
-        showError(session.error || "OAuth login failed.");
+        showError(session.error || (activeAuthSessionKind === "wechat" ? "WeChat login failed." : "OAuth login failed."));
       }
     } catch (error) {
       clearAuthSessionPolling();
@@ -1857,7 +2051,7 @@ async function triggerOAuthLogin(scope) {
     const result = await api.authLogin(oauth.provider);
     if (result?.mode === "device_code") {
       openOAuthDeviceModal(result);
-      startAuthSessionPolling(result.sessionId || result.id);
+      startAuthSessionPolling(result.sessionId || result.id, "auth", scope);
       showInfo(t("oauth_login_device_code"));
       if (result.deviceUrl) {
         try {
@@ -1868,7 +2062,7 @@ async function triggerOAuthLogin(scope) {
     }
     if (result?.mode === "browser_link") {
       openOAuthDeviceModal(result);
-      startAuthSessionPolling(result.sessionId || result.id);
+      startAuthSessionPolling(result.sessionId || result.id, "auth", scope);
       showInfo(t("oauth_login_browser_manual"));
       return;
     }
@@ -1880,6 +2074,19 @@ async function triggerOAuthLogin(scope) {
     if (loginButton) {
       loginButton.disabled = false;
     }
+  }
+}
+
+async function triggerWeChatLogin(scope) {
+  try {
+    const channelConfig = getTypedChannelValues(scope, "wechat");
+    const result = await api.startWeChatLogin(channelConfig);
+    applyWeChatLoginSession(scope, result);
+    openOAuthDeviceModal(result);
+    startAuthSessionPolling(result.id, "wechat", scope);
+    showInfo(t("wechat_login_pending"));
+  } catch (error) {
+    showError(error);
   }
 }
 
@@ -2556,6 +2763,7 @@ function getQuickDataFromConfig(cfg, selected) {
     modelPreset: selection.modelPreset,
     modelName,
     apiBase,
+    supportsToolCalling: entry.supports_tool_calling !== false,
     apiKey: String(entry.api_key || ""),
     authMode: selection.authMode || authMode,
     channelPlatform: activeChannel
@@ -2569,6 +2777,7 @@ function renderQuickConfig() {
     renderModelSelectors("quick");
     els.quickModelName.value = "";
     els.quickApiBase.value = "";
+    els.quickSupportsToolCalling.checked = true;
     renderAuthMethodOptions("quick", AUTH_MODE_API_KEY);
     applyModelSelection("quick", { preserveCustomName: true, preserveAuthMode: true });
     els.quickApiKey.value = "";
@@ -2583,6 +2792,7 @@ function renderQuickConfig() {
   renderModelSelectors("quick", quick.modelPlatform, quick.modelPreset);
   els.quickModelName.value = quick.modelName;
   els.quickApiBase.value = quick.apiBase;
+  els.quickSupportsToolCalling.checked = quick.supportsToolCalling !== false;
   renderAuthMethodOptions("quick", quick.authMode || AUTH_MODE_API_KEY);
   applyModelSelection("quick", { preserveCustomName: true, preserveAuthMode: true });
   els.quickAuthMethod.value = quick.authMode || AUTH_MODE_API_KEY;
@@ -2602,6 +2812,7 @@ function getQuickDataFromInputs() {
     modelPreset: String(els.quickModelPreset.value || "").trim(),
     modelName: String(els.quickModelName.value || "").trim(),
     apiBase: String(els.quickApiBase.value || "").trim(),
+    supportsToolCalling: Boolean(els.quickSupportsToolCalling.checked),
     authMode: String(els.quickAuthMethod.value || AUTH_MODE_API_KEY).trim(),
     apiKey: String(els.quickApiKey.value || "").trim(),
     channelPlatform,
@@ -2634,6 +2845,7 @@ function applyQuickDataToConfig(cfg, quick) {
   entry.api_base = authMode === AUTH_MODE_OAUTH ? "" : quick.apiBase;
   entry.api_key = authMode === AUTH_MODE_OAUTH ? "" : quick.apiKey;
   entry.auth_method = authMode === AUTH_MODE_OAUTH ? AUTH_MODE_OAUTH : "";
+  entry.supports_tool_calling = quick.supportsToolCalling !== false;
   safe.model_list[entryIndex] = entry;
 
   if (!safe.channels || typeof safe.channels !== "object") {
@@ -3191,6 +3403,7 @@ function openCreateWizard() {
   renderModelSelectors("wizard");
   els.wizardModelName.value = "";
   els.wizardApiBase.value = "";
+  els.wizardSupportsToolCalling.checked = true;
   renderAuthMethodOptions("wizard", AUTH_MODE_API_KEY);
   applyModelSelection("wizard", { preserveCustomName: false, preserveAuthMode: true });
   els.wizardApiKey.value = "";
@@ -3220,6 +3433,7 @@ function collectWizardData() {
     modelPreset: String(els.wizardModelPreset.value || "").trim(),
     modelName: String(els.wizardModelName.value || "").trim(),
     apiBase: String(els.wizardApiBase.value || "").trim(),
+    supportsToolCalling: Boolean(els.wizardSupportsToolCalling.checked),
     authMode: String(els.wizardAuthMethod.value || AUTH_MODE_API_KEY).trim(),
     apiKey: String(els.wizardApiKey.value || "").trim(),
     channelPlatform,
@@ -3373,7 +3587,7 @@ function bindEvents() {
   });
   els.oauthDeviceCopyBtn?.addEventListener("click", async () => {
     const value =
-      currentAuthSession?.mode === "browser_link"
+      currentAuthSession?.mode === "browser_link" || currentAuthSession?.mode === "qr_link"
         ? els.oauthDeviceUrl?.textContent || ""
         : els.oauthDeviceCode?.textContent || "";
     if (!value) {
@@ -3381,7 +3595,13 @@ function bindEvents() {
     }
     try {
       await copyTextToClipboard(value);
-      showInfo(t(currentAuthSession?.mode === "browser_link" ? "oauth_browser_link_copied" : "oauth_device_code_copied"));
+      showInfo(
+        t(
+          currentAuthSession?.mode === "browser_link" || currentAuthSession?.mode === "qr_link"
+            ? "oauth_browser_link_copied"
+            : "oauth_device_code_copied"
+        )
+      );
     } catch (error) {
       showError(error);
     }

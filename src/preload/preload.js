@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require("electron");
+const QRCode = require("qrcode");
 
 contextBridge.exposeInMainWorld("clawApi", {
   init: () => ipcRenderer.invoke("app:init"),
@@ -7,6 +8,14 @@ contextBridge.exposeInMainWorld("clawApi", {
   getAuthStatus: () => ipcRenderer.invoke("auth:status"),
   authLogin: (provider) => ipcRenderer.invoke("auth:login", provider),
   getAuthSession: (sessionId) => ipcRenderer.invoke("auth:session", sessionId),
+  startWeChatLogin: (channelConfig) => ipcRenderer.invoke("channels:wechat:login", channelConfig),
+  getWeChatLoginSession: (sessionId) => ipcRenderer.invoke("channels:wechat:session", sessionId),
+  generateQRCode: async (text) =>
+    QRCode.toDataURL(String(text || ""), {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 320
+    }),
   listAgents: () => ipcRenderer.invoke("agents:list"),
   createAgent: (name) => ipcRenderer.invoke("agents:create", name),
   renameAgent: (id, name) => ipcRenderer.invoke("agents:rename", id, name),

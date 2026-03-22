@@ -132,6 +132,10 @@
                   <span id="quickApiBaseLabel">API Base</span>
                   <input id="quickApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
                 </label>
+                <label class="quick-field quick-field-checkbox">
+                  <span id="quickSupportsToolCallingLabel">Supports Tool Calling</span>
+                  <input id="quickSupportsToolCalling" type="checkbox" checked />
+                </label>
                 <label class="quick-field">
                   <span id="quickAuthMethodLabel">Auth Method</span>
                   <select id="quickAuthMethod"></select>
@@ -253,6 +257,10 @@
             <span id="wizardApiBaseLabel">API Base</span>
             <input id="wizardApiBase" type="text" placeholder="e.g. https://api.openai.com/v1" />
           </label>
+          <label class="quick-field quick-field-checkbox">
+            <span id="wizardSupportsToolCallingLabel">Supports Tool Calling</span>
+            <input id="wizardSupportsToolCalling" type="checkbox" checked />
+          </label>
           <label class="quick-field">
             <span id="wizardAuthMethodLabel">Auth Method</span>
             <select id="wizardAuthMethod"></select>
@@ -304,6 +312,12 @@
             <span id="oauthDeviceUrlLabel" class="oauth-device-label">Verification URL</span>
             <code id="oauthDeviceUrl" class="oauth-device-value"></code>
             <button id="oauthDeviceOpenBtn" class="btn btn-soft" type="button">Open Page</button>
+          </div>
+          <div id="oauthDeviceQrCard" class="oauth-device-card hidden">
+            <span id="oauthDeviceQrLabel" class="oauth-device-label">Scan QR Code</span>
+            <div class="oauth-device-qr-wrap">
+              <img id="oauthDeviceQrImage" class="oauth-device-qr-image" alt="" />
+            </div>
           </div>
           <div id="oauthDeviceCodeCard" class="oauth-device-card">
             <span id="oauthDeviceCodeLabel" class="oauth-device-label">User Code</span>

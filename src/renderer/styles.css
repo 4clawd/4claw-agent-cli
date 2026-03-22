@@ -958,6 +958,15 @@ button {
   padding: 10px;
 }
 
+.channel-login-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(196, 150, 23, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 250, 228, 0.92);
+}
+
 .channel-field-item {
   display: grid;
   gap: 6px;
@@ -1081,6 +1090,22 @@ button {
   color: var(--text-main);
   word-break: break-all;
   white-space: pre-wrap;
+}
+
+.oauth-device-qr-wrap {
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(196, 150, 23, 0.2);
+}
+
+.oauth-device-qr-image {
+  width: 260px;
+  height: 260px;
+  object-fit: contain;
+  image-rendering: auto;
 }
 
 .toast-host {

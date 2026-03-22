@@ -727,6 +727,8 @@ function setupIpc() {
   ipcMain.handle("auth:status", () => agentService.getAuthStatus());
   ipcMain.handle("auth:login", (_event, provider) => agentService.loginWithOAuth(provider));
   ipcMain.handle("auth:session", (_event, sessionId) => agentService.getAuthSession(sessionId));
+  ipcMain.handle("channels:wechat:login", (_event, channelConfig) => agentService.startWeChatLogin(channelConfig));
+  ipcMain.handle("channels:wechat:session", (_event, sessionId) => agentService.getWeChatLoginSession(sessionId));
   ipcMain.handle("shell:openExternal", (_event, target) => {
     const url = String(target || "").trim();
     if (!url) {

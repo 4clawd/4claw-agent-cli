@@ -74,6 +74,7 @@ class AgentService {
     this.stoppingAgents = new Set();
     this.chatWorkers = new Map();
     this.authSessions = new Map();
+    this.wechatLoginSessions = new Map();
     this.watchdogState = new Map();
     this.watchdogBusy = false;
     this.watchdogTimer = null;
@@ -460,6 +461,15 @@ class AgentService {
     return null;
   }
 
+  findPendingWeChatLoginSession() {
+    for (const session of this.wechatLoginSessions.values()) {
+      if (session.status === "starting" || session.status === "pending") {
+        return session;
+      }
+    }
+    return null;
+  }
+
   parseOpenAIDeviceCodeOutput(text) {
     const source = String(text || "").replace(/\r/g, "");
     const urlMatch = source.match(/To authenticate, open this URL in your browser:\s+([^\s]+)/i);
@@ -475,6 +485,30 @@ class AgentService {
     const urlMatch = source.match(/Open this URL to authenticate:\s+([^\s]+)/i);
     return {
       deviceUrl: urlMatch ? String(urlMatch[1] || "").trim() : ""
+    };
+  }
+
+  parseWeChatLoginOutput(text) {
+    const source = String(text || "").replace(/\r/g, "");
+    const urlBlockMatch = source.match(/Open this WeChat QR login URL and scan it with WeChat:\s+([\s\S]*?)\n\s*Waiting for confirmation/i);
+    const accountMatch = source.match(/Account ID:\s*(.+)/i);
+    const userMatch = source.match(/User ID:\s*(.+)/i);
+    let deviceUrl = "";
+    if (urlBlockMatch) {
+      const lines = String(urlBlockMatch[1] || "")
+        .split(/\n+/)
+        .map((line) => String(line || "").trim())
+        .filter(Boolean);
+      deviceUrl = lines.find((line) => /^https?:\/\//i.test(line)) || "";
+    }
+    if (!deviceUrl) {
+      const fallback = source.match(/https?:\/\/[^\s]+/i);
+      deviceUrl = fallback ? String(fallback[0] || "").trim() : "";
+    }
+    return {
+      deviceUrl,
+      accountId: accountMatch ? String(accountMatch[1] || "").trim() : "",
+      userId: userMatch ? String(userMatch[1] || "").trim() : ""
     };
   }
 
@@ -498,6 +532,29 @@ class AgentService {
     };
   }
 
+  serializeWeChatLoginSession(session) {
+    if (!session) {
+      return null;
+    }
+    return {
+      id: session.id,
+      kind: "wechat",
+      provider: "wechat",
+      mode: session.mode,
+      status: session.status,
+      deviceUrl: session.deviceUrl || "",
+      userCode: "",
+      accountId: session.accountId || "",
+      userId: session.userId || "",
+      baseUrl: session.baseUrl || "",
+      stdout: session.stdout || "",
+      stderr: session.stderr || "",
+      error: session.error || "",
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt
+    };
+  }
+
   updateAuthSession(session, patch = {}) {
     Object.assign(session, patch, { updatedAt: nowISO() });
   }
@@ -506,10 +563,178 @@ class AgentService {
     return this.serializeAuthSession(this.authSessions.get(String(sessionId || "").trim()));
   }
 
+  getWeChatLoginSession(sessionId) {
+    return this.serializeWeChatLoginSession(this.wechatLoginSessions.get(String(sessionId || "").trim()));
+  }
+
   scheduleAuthSessionCleanup(sessionId, delayMs = 10 * 60 * 1000) {
     setTimeout(() => {
       this.authSessions.delete(sessionId);
     }, delayMs).unref?.();
+  }
+
+  scheduleWeChatLoginSessionCleanup(sessionId, tempDir = "", delayMs = 10 * 60 * 1000) {
+    setTimeout(() => {
+      this.wechatLoginSessions.delete(sessionId);
+      if (tempDir) {
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch {}
+      }
+    }, delayMs).unref?.();
+  }
+
+  buildWeChatLoginConfig(channelConfig = {}) {
+    const cfg = this.loadTemplateConfig();
+    if (!cfg.channels || typeof cfg.channels !== "object") {
+      cfg.channels = {};
+    }
+    const template =
+      cfg.channels.wechat && typeof cfg.channels.wechat === "object" && !Array.isArray(cfg.channels.wechat)
+        ? cfg.channels.wechat
+        : {};
+    cfg.channels.wechat = {
+      ...template,
+      ...(channelConfig && typeof channelConfig === "object" ? channelConfig : {}),
+      enabled: false,
+      token: ""
+    };
+    return cfg;
+  }
+
+  async startWeChatLogin(channelConfig = {}) {
+    const existing = this.findPendingWeChatLoginSession();
+    if (existing) {
+      return this.serializeWeChatLoginSession(existing);
+    }
+
+    const binary = this.resolveBinaryPath();
+    if (!binary.found) {
+      throw new Error(`4claw executable not found: ${binary.binaryName}`);
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "4claw-wechat-login-"));
+    const tempConfigPath = path.join(tempDir, "config.json");
+    writeJson(tempConfigPath, this.buildWeChatLoginConfig(channelConfig));
+
+    const session = {
+      id: `wechat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      mode: "qr_link",
+      status: "starting",
+      deviceUrl: "",
+      accountId: "",
+      userId: "",
+      baseUrl: "",
+      stdout: "",
+      stderr: "",
+      error: "",
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+      tempDir,
+      tempConfigPath
+    };
+    this.wechatLoginSessions.set(session.id, session);
+
+    const child = spawn(binary.resolvedPath, ["channels", "wechat", "login", "--config", tempConfigPath], {
+      cwd: this.paths.root,
+      windowsHide: true
+    });
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const maybeResolvePending = () => {
+        const parsed = this.parseWeChatLoginOutput(`${session.stdout}\n${session.stderr}`);
+        if (!session.deviceUrl && parsed.deviceUrl) {
+          session.deviceUrl = parsed.deviceUrl;
+        }
+        if (!session.accountId && parsed.accountId) {
+          session.accountId = parsed.accountId;
+        }
+        if (!session.userId && parsed.userId) {
+          session.userId = parsed.userId;
+        }
+        if (!settled && session.deviceUrl) {
+          this.updateAuthSession(session, { status: "pending" });
+          settled = true;
+          resolve(this.serializeWeChatLoginSession(session));
+        }
+      };
+
+      child.stdout.on("data", (chunk) => {
+        session.stdout += String(chunk);
+        maybeResolvePending();
+      });
+
+      child.stderr.on("data", (chunk) => {
+        session.stderr += String(chunk);
+        maybeResolvePending();
+      });
+
+      child.on("error", (error) => {
+        this.updateAuthSession(session, {
+          status: "error",
+          error: error.message || String(error)
+        });
+        this.scheduleWeChatLoginSessionCleanup(session.id, tempDir);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          const savedConfig = readJson(tempConfigPath, {});
+          const wechatCfg =
+            savedConfig && savedConfig.channels && savedConfig.channels.wechat && typeof savedConfig.channels.wechat === "object"
+              ? savedConfig.channels.wechat
+              : {};
+          const parsed = this.parseWeChatLoginOutput(`${session.stdout}\n${session.stderr}`);
+          this.updateAuthSession(session, {
+            status: "success",
+            deviceUrl: session.deviceUrl || parsed.deviceUrl || "",
+            accountId: session.accountId || parsed.accountId || String(wechatCfg.account_id || "").trim(),
+            userId: session.userId || parsed.userId || "",
+            baseUrl: String(wechatCfg.base_url || channelConfig?.base_url || "").trim()
+          });
+          this.scheduleWeChatLoginSessionCleanup(session.id, tempDir);
+          if (!settled) {
+            settled = true;
+            resolve(this.serializeWeChatLoginSession(session));
+          }
+          return;
+        }
+
+        const message = (session.stderr || session.stdout || `4claw exited with code ${code}`).trim();
+        this.updateAuthSession(session, {
+          status: "error",
+          error: message
+        });
+        this.scheduleWeChatLoginSessionCleanup(session.id, tempDir);
+        if (!settled) {
+          settled = true;
+          reject(new Error(message));
+        }
+      });
+
+      setTimeout(() => {
+        maybeResolvePending();
+        if (!settled && !session.deviceUrl) {
+          const message = "Unable to read WeChat QR login URL from 4claw output.";
+          this.updateAuthSession(session, {
+            status: "error",
+            error: message
+          });
+          this.scheduleWeChatLoginSessionCleanup(session.id, tempDir);
+          settled = true;
+          try {
+            child.kill("SIGTERM");
+          } catch {}
+          reject(new Error(message));
+        }
+      }, 5000);
+    });
   }
 
   async startOpenAIDeviceCodeLogin() {

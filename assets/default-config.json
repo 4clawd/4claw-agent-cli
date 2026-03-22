@@ -15,7 +15,8 @@
       "model": "test",
       "api_key": "sk-your-openai-key",
       "api_base": "https://api.openai.com/v1",
-      "request_timeout_seconds": 120
+      "request_timeout_seconds": 120,
+      "supports_tool_calling": true
     }
   ],
   "channels": {
@@ -26,6 +27,15 @@
       "allow_from": [
         "YOUR_USER_ID"
       ]
+    },
+    "wechat": {
+      "enabled": false,
+      "account_id": "YOUR_WECHAT_ACCOUNT_ID",
+      "token": "",
+      "base_url": "https://ilinkai.weixin.qq.com",
+      "cdn_base_url": "https://novac2c.cdn.weixin.qq.com/c2c",
+      "allow_from": [],
+      "long_poll_timeout_ms": 35000
     },
     "discord": {
       "enabled": false,
