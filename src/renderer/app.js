@@ -1235,6 +1235,17 @@ function getChannelLabel(channelKey) {
   return CHANNEL_LABELS[channelKey] || channelKey;
 }
 
+function isWeChatPlaceholderAccountId(value) {
+  return String(value || "").trim().toLowerCase() === "your_wechat_account_id";
+}
+
+function normalizeChannelTemplateValue(channelKey, field, value) {
+  if (channelKey === "wechat" && field === "account_id" && isWeChatPlaceholderAccountId(value)) {
+    return "";
+  }
+  return value;
+}
+
 function getWeChatLoginState(scope) {
   return state.wechatLoginByScope[scope] || null;
 }
@@ -1248,7 +1259,9 @@ function getWeChatStatusText(scope) {
   const store = getChannelStore(scope);
   const configuredAccountId = String(store?.wechat?.account_id || "").trim();
   if (!current) {
-    return configuredAccountId ? `${t("oauth_authenticated")}: ${configuredAccountId}` : t("wechat_login_ready");
+    return configuredAccountId && !isWeChatPlaceholderAccountId(configuredAccountId)
+      ? `${t("oauth_authenticated")}: ${configuredAccountId}`
+      : t("wechat_login_ready");
   }
   if (current.status === "success") {
     return current.accountId ? `${t("oauth_authenticated")}: ${current.accountId}` : t("wechat_login_success");
@@ -1276,7 +1289,7 @@ function ensureChannelStoreFromConfig(scope, channelsConfig = {}) {
         current && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, field)
           ? current[field]
           : templateValue;
-      values[field] = normalizeChannelRawValue(value);
+      values[field] = normalizeChannelRawValue(normalizeChannelTemplateValue(key, field, value));
     }
     store[key] = values;
   }
@@ -2859,10 +2872,14 @@ function applyQuickDataToConfig(cfg, quick) {
   const selectedChannel = quick.channelPlatform || "telegram";
   const selectedExisting =
     safe.channels[selectedChannel] && typeof safe.channels[selectedChannel] === "object" ? safe.channels[selectedChannel] : {};
+  const normalizedChannelValues = { ...(quick.channelValues || {}) };
+  if (selectedChannel === "wechat" && isWeChatPlaceholderAccountId(normalizedChannelValues.account_id)) {
+    normalizedChannelValues.account_id = "";
+  }
   safe.channels[selectedChannel] = {
     ...selectedExisting,
     enabled: true,
-    ...(quick.channelValues || {})
+    ...normalizedChannelValues
   };
 
   return safe;

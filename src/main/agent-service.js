@@ -57,6 +57,50 @@ function authStorePath() {
   return path.join(os.homedir(), ".4claw", "auth.json");
 }
 
+function codexAuthStorePath() {
+  return path.join(os.homedir(), ".codex", "auth.json");
+}
+
+function decodeBase64UrlJson(segment) {
+  const text = String(segment || "").trim();
+  if (!text) {
+    return null;
+  }
+  try {
+    const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function getJwtPayload(token) {
+  const text = String(token || "").trim();
+  if (!text) {
+    return null;
+  }
+  const parts = text.split(".");
+  if (parts.length < 2) {
+    return null;
+  }
+  return decodeBase64UrlJson(parts[1]);
+}
+
+function getJwtExpiryDate(token) {
+  const payload = getJwtPayload(token);
+  const exp = Number(payload?.exp || 0);
+  if (!Number.isFinite(exp) || exp <= 0) {
+    return null;
+  }
+  return new Date(exp * 1000);
+}
+
+function isWeChatPlaceholderAccountId(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return text === "your_wechat_account_id";
+}
+
 function sanitizeSessionFileName(sessionKey) {
   return String(sessionKey || "").replace(/:/g, "_");
 }
@@ -408,26 +452,82 @@ class AgentService {
     const store = readJson(authStorePath(), { credentials: {} }) || { credentials: {} };
     const credentials =
       store && store.credentials && typeof store.credentials === "object" ? store.credentials : {};
+    const codexStore = readJson(codexAuthStorePath(), {}) || {};
+    const codexTokens =
+      codexStore && codexStore.tokens && typeof codexStore.tokens === "object" ? codexStore.tokens : {};
 
     const providers = {};
     for (const [provider, cred] of Object.entries(credentials)) {
-      const expiresAt = cred?.expires_at ? new Date(cred.expires_at) : null;
+      let normalizedCred = cred && typeof cred === "object" ? { ...cred } : {};
+      if (provider === "openai") {
+        const primaryExpiry =
+          normalizedCred?.expires_at && !Number.isNaN(new Date(normalizedCred.expires_at).getTime())
+            ? new Date(normalizedCred.expires_at)
+            : null;
+        const codexExpiry =
+          getJwtExpiryDate(codexTokens.access_token) || getJwtExpiryDate(codexTokens.id_token);
+        const shouldUseCodexFallback =
+          (!normalizedCred.access_token && codexTokens.access_token) ||
+          (!primaryExpiry && codexExpiry) ||
+          (primaryExpiry && codexExpiry && codexExpiry.getTime() > primaryExpiry.getTime());
+        if (shouldUseCodexFallback) {
+          normalizedCred = {
+            ...normalizedCred,
+            access_token: normalizedCred.access_token || codexTokens.access_token || "",
+            refresh_token: normalizedCred.refresh_token || codexTokens.refresh_token || "",
+            account_id: normalizedCred.account_id || codexTokens.account_id || "",
+            expires_at:
+              normalizedCred.expires_at ||
+              (codexExpiry && !Number.isNaN(codexExpiry.getTime()) ? codexExpiry.toISOString() : ""),
+            auth_method: normalizedCred.auth_method || "oauth"
+          };
+        }
+      }
+
+      const expiresAt = normalizedCred?.expires_at ? new Date(normalizedCred.expires_at) : null;
       const now = Date.now();
       let status = "available";
+      const hasRefreshToken = Boolean(normalizedCred?.refresh_token);
+      const hasAccessToken = Boolean(normalizedCred?.access_token);
       if (expiresAt && !Number.isNaN(expiresAt.getTime())) {
         if (expiresAt.getTime() <= now) {
-          status = "expired";
+          status = hasRefreshToken ? "needs_refresh" : "expired";
         } else if (expiresAt.getTime() <= now + 5 * 60 * 1000) {
           status = "needs_refresh";
         }
+      } else if (!hasAccessToken && !hasRefreshToken) {
+        status = "expired";
       }
 
       providers[provider] = {
         provider,
-        authMethod: String(cred?.auth_method || ""),
-        accountId: String(cred?.account_id || ""),
-        email: String(cred?.email || ""),
-        projectId: String(cred?.project_id || ""),
+        authMethod: String(normalizedCred?.auth_method || ""),
+        accountId: String(normalizedCred?.account_id || ""),
+        email: String(normalizedCred?.email || ""),
+        projectId: String(normalizedCred?.project_id || ""),
+        expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt.toISOString() : "",
+        status
+      };
+    }
+
+    if (!providers.openai && codexTokens && (codexTokens.access_token || codexTokens.refresh_token)) {
+      const expiresAt = getJwtExpiryDate(codexTokens.access_token) || getJwtExpiryDate(codexTokens.id_token);
+      const hasRefreshToken = Boolean(codexTokens.refresh_token);
+      const now = Date.now();
+      let status = "available";
+      if (expiresAt && !Number.isNaN(expiresAt.getTime())) {
+        if (expiresAt.getTime() <= now) {
+          status = hasRefreshToken ? "needs_refresh" : "expired";
+        } else if (expiresAt.getTime() <= now + 5 * 60 * 1000) {
+          status = "needs_refresh";
+        }
+      }
+      providers.openai = {
+        provider: "openai",
+        authMethod: "oauth",
+        accountId: String(codexTokens.account_id || ""),
+        email: "",
+        projectId: "",
         expiresAt: expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt.toISOString() : "",
         status
       };
@@ -597,8 +697,12 @@ class AgentService {
       ...template,
       ...(channelConfig && typeof channelConfig === "object" ? channelConfig : {}),
       enabled: false,
+      account_id: "",
       token: ""
     };
+    if (isWeChatPlaceholderAccountId(cfg.channels.wechat.account_id)) {
+      cfg.channels.wechat.account_id = "";
+    }
     return cfg;
   }
 

@@ -2,6 +2,7 @@
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const QRCode = require("qrcode");
 const electronModule = require("electron");
 
 
@@ -673,6 +674,7 @@ function createWindow() {
     backgroundColor: "#fef7dc",
     title: "4claw Desktop",
     icon: iconPath || undefined,
+    show: false,
     frame: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -685,6 +687,50 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+
+  mainWindow.once("ready-to-show", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    try {
+      mainWindow.webContents.focus();
+    } catch {}
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+      }
+      mainWindow.focus();
+      try {
+        mainWindow.webContents.focus();
+      } catch {}
+    }, 80);
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+      }
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+      mainWindow.focus();
+      try {
+        mainWindow.webContents.focus();
+      } catch {}
+    }, 40);
+  });
+
+  mainWindow.on("focus", () => {
+    try {
+      mainWindow?.webContents?.focus();
+    } catch {}
+  });
 
   mainWindow.on("close", async (event) => {
     if (isQuitting) {
@@ -729,6 +775,13 @@ function setupIpc() {
   ipcMain.handle("auth:session", (_event, sessionId) => agentService.getAuthSession(sessionId));
   ipcMain.handle("channels:wechat:login", (_event, channelConfig) => agentService.startWeChatLogin(channelConfig));
   ipcMain.handle("channels:wechat:session", (_event, sessionId) => agentService.getWeChatLoginSession(sessionId));
+  ipcMain.handle("utils:qrcode", (_event, text) =>
+    QRCode.toDataURL(String(text || ""), {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 320
+    })
+  );
   ipcMain.handle("shell:openExternal", (_event, target) => {
     const url = String(target || "").trim();
     if (!url) {
